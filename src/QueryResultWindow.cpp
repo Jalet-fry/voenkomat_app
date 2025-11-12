@@ -125,6 +125,65 @@ QString QueryResultWindow::getDisplayName(const QString &fieldName) const
 
 void QueryResultWindow::goBack()
 {
-    close();
+    if (parentWidget()) {
+        parentWidget()->raise();
+        parentWidget()->activateWindow();
+    }
+    hide();
+}
+
+void QueryResultWindow::exportToCSV()
+{
+    QString fileName = QFileDialog::getSaveFileName(this,
+        "Сохранить результаты в CSV", "",
+        "CSV Files (*.csv);;All Files (*)");
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    // Добавляем расширение .csv если его нет
+    if (!fileName.endsWith(".csv", Qt::CaseInsensitive)) {
+        fileName += ".csv";
+    }
+    
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Ошибка", 
+                            QString("Не удалось создать файл:\n%1").arg(file.errorString()));
+        return;
+    }
+    
+    QTextStream out(&file);
+    out.setCodec("UTF-8");
+    
+    // Добавляем BOM для UTF-8 (необходимо для правильного отображения в Excel)
+    out << "\xEF\xBB\xBF";
+    
+    // Записываем заголовки
+    QStringList headers;
+    foreach (const QString &col, m_columnNames) {
+        headers << getDisplayName(col);
+    }
+    out << headers.join(",") << "\n";
+    
+    // Записываем данные
+    foreach (const QList<QVariant> &row, m_rows) {
+        QStringList values;
+        for (int i = 0; i < m_columnNames.size() && i < row.size(); ++i) {
+            QString value = row[i].isNull() ? "" : row[i].toString();
+            // Экранируем кавычки и запятые для CSV
+            if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+                value.replace("\"", "\"\""); // Экранируем двойные кавычки
+                value = "\"" + value + "\""; // Оборачиваем в кавычки
+            }
+            values << value;
+        }
+        out << values.join(",") << "\n";
+    }
+    
+    file.close();
+    QMessageBox::information(this, "Успех", 
+                            QString("Данные успешно экспортированы в файл:\n%1").arg(fileName));
 }
 
