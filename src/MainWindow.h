@@ -32,6 +32,7 @@ private slots:
 private:
     void setupUI();
     void setupStyles();
+    void updateConnectionStatus();
     bool connectToDatabase();
 
     DatabaseManager *m_dbManager;
@@ -39,6 +40,7 @@ private:
     QVBoxLayout *m_layout;
     
     QLabel *m_titleLabel;
+    QLabel *m_statusLabel; // Статус подключения к БД
     QPushButton *m_queriesBtn;
     QPushButton *m_tablesBtn;
     QPushButton *m_addTableBtn;

@@ -11,6 +11,8 @@ release/
 *.dll
 *.so
 *.dylib
+# Исключение для libpq.dll (отслеживается через Git LFS)
+!libpq.dll
 
 # Qt Creator files
 *.autosave
@@ -22,6 +24,12 @@ config.ini
 # Exports
 exports/*.sql
 !exports/.gitkeep
+
+# Database backups and parameters (локальные настройки)
+sql_zaproses/*backup*.sql
+sql_zaproses/last_backup.sql
+sql_zaproses/new_backup.sql
+sql_zaproses/data-*.csv
 
 # System files
 .DS_Store

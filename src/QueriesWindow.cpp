@@ -18,14 +18,22 @@
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QDebug>
+#include <QTableWidgetItem>
+#include <QHeaderView>
+#include <QPushButton>
 #include <algorithm>
 
 QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     : QWidget(parent)
     , m_dbManager(dbManager)
+    , m_layout(nullptr)
+    , m_filterLayout(nullptr)
+    , m_table(nullptr)
+    , m_typeFilter(nullptr)
+    , m_searchEdit(nullptr)
 {
     setWindowTitle("Запросы");
-    setGeometry(150, 150, 500, 400);
+    setGeometry(150, 150, 1000, 700);
     
     setupUI();
     setupStyles();
@@ -48,23 +56,75 @@ void QueriesWindow::setupUI()
     title->setStyleSheet("font-size: 20px; color: black; font-weight: bold;");
     m_layout->addWidget(title);
 
-    // Сетка кнопок
-    m_gridLayout = new QGridLayout();
-    m_layout->addLayout(m_gridLayout);
+    // Панель фильтрации
+    m_filterLayout = new QHBoxLayout();
+    
+    QLabel *filterLabel = new QLabel("Тип:", this);
+    m_filterLayout->addWidget(filterLabel);
+    
+    m_typeFilter = new QComboBox(this);
+    m_typeFilter->addItem("Все", "");
+    m_typeFilter->addItem("Lab5", "Lab5");
+    m_typeFilter->addItem("Lab6", "Lab6");
+    m_typeFilter->setMinimumWidth(120);
+    connect(m_typeFilter, SIGNAL(currentIndexChanged(int)), this, SLOT(onFilterChanged()));
+    m_filterLayout->addWidget(m_typeFilter);
+    
+    m_filterLayout->addSpacing(20);
+    
+    QLabel *searchLabel = new QLabel("Поиск:", this);
+    m_filterLayout->addWidget(searchLabel);
+    
+    m_searchEdit = new QLineEdit(this);
+    m_searchEdit->setPlaceholderText("Введите текст для поиска...");
+    m_searchEdit->setMinimumWidth(200);
+    connect(m_searchEdit, &QLineEdit::textChanged, this, &QueriesWindow::onSearchTextChanged);
+    m_filterLayout->addWidget(m_searchEdit);
+    
+    m_filterLayout->addStretch();
+    
+    m_layout->addLayout(m_filterLayout);
 
-    m_layout->addStretch();
+    // Таблица запросов
+    m_table = new QTableWidget(this);
+    m_table->setColumnCount(4);
+    QStringList headers;
+    headers << "Номер" << "Описание" << "Тип" << "Действие";
+    m_table->setHorizontalHeaderLabels(headers);
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_table->setAlternatingRowColors(true);
+    
+    // Настройка колонок
+    m_table->horizontalHeader()->setStretchLastSection(false);
+    m_table->setColumnWidth(0, 80);   // Номер
+    m_table->setColumnWidth(1, 400);  // Описание
+    m_table->setColumnWidth(2, 100);  // Тип
+    m_table->setColumnWidth(3, 120);  // Действие
+    
+    connect(m_table, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(onTableDoubleClicked(QModelIndex)));
+    connect(m_table, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showQueryContextMenu(QPoint)));
+    
+    m_layout->addWidget(m_table);
 
-    // Кнопка "Добавить"
+    // Кнопки
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    
     QPushButton *addBtn = new QPushButton("Добавить", this);
     addBtn->setMinimumHeight(40);
     connect(addBtn, &QPushButton::clicked, this, &QueriesWindow::addNewQuery);
-    m_layout->addWidget(addBtn);
-
-    // Кнопка "Назад"
+    buttonLayout->addWidget(addBtn);
+    
+    buttonLayout->addStretch();
+    
     QPushButton *backBtn = new QPushButton("Назад", this);
     backBtn->setMinimumHeight(40);
     connect(backBtn, &QPushButton::clicked, this, &QueriesWindow::goBack);
-    m_layout->addWidget(backBtn);
+    buttonLayout->addWidget(backBtn);
+    
+    m_layout->addLayout(buttonLayout);
 }
 
 void QueriesWindow::setupStyles()
@@ -83,6 +143,23 @@ void QueriesWindow::setupStyles()
         "}"
         "QPushButton:hover { background-color: #FF69B4; }"
         "QPushButton:pressed { background-color: #FF1493; }"
+        "QTableWidget {"
+        "    background-color: white;"
+        "    border: 1px solid #ccc;"
+        "    gridline-color: #ddd;"
+        "}"
+        "QTableWidget::item {"
+        "    padding: 5px;"
+        "}"
+        "QTableWidget::item:selected {"
+        "    background-color: #E0B0FF;"
+        "}"
+        "QComboBox, QLineEdit {"
+        "    padding: 5px;"
+        "    border: 1px solid #ccc;"
+        "    border-radius: 4px;"
+        "    background-color: white;"
+        "}"
     );
 }
 
@@ -141,30 +218,108 @@ QString QueriesWindow::findResourcesDirectory() const
 
 void QueriesWindow::loadQueries()
 {
-    m_queries.clear();
-    m_queryTitles.clear();
+    m_allQueries.clear();
+    m_filteredQueries.clear();
 
     // Находим директорию с ресурсами
     QString resourcesPath = findResourcesDirectory();
     QDir queriesDir(resourcesPath);
     
+    qDebug() << "=== Загрузка запросов ===";
+    qDebug() << "Путь к ресурсам:" << resourcesPath;
+    qDebug() << "Директория существует:" << queriesDir.exists();
+    
     if (!queriesDir.exists()) {
-        qDebug() << "Директория с запросами не найдена:" << resourcesPath;
+        qDebug() << "ОШИБКА: Директория с запросами не найдена:" << resourcesPath;
+        QMessageBox::warning(this, "Ошибка", 
+            QString("Директория с запросами не найдена:\n%1\n\nПроверьте, что папка resources/queries существует.").arg(resourcesPath));
+        refreshTable();
         return;
     }
     
     qDebug() << "Загрузка запросов из:" << queriesDir.absolutePath();
 
+    // Загружаем запросы из Lab5
+    QDir lab5Dir(queriesDir.absoluteFilePath("Lab5"));
+    qDebug() << "Папка Lab5 существует:" << lab5Dir.exists();
+    if (lab5Dir.exists()) {
+        qDebug() << "Загрузка из Lab5:" << lab5Dir.absolutePath();
+        int beforeCount = m_allQueries.size();
+        loadQueriesFromFolder(lab5Dir.absolutePath(), "Lab5");
+        qDebug() << "Загружено из Lab5:" << (m_allQueries.size() - beforeCount) << "запросов";
+    } else {
+        qDebug() << "Папка Lab5 не найдена:" << lab5Dir.absolutePath();
+    }
+
+    // Загружаем запросы из Lab6
+    QDir lab6Dir(queriesDir.absoluteFilePath("Lab6"));
+    qDebug() << "Папка Lab6 существует:" << lab6Dir.exists();
+    if (lab6Dir.exists()) {
+        qDebug() << "Загрузка из Lab6:" << lab6Dir.absolutePath();
+        int beforeCount = m_allQueries.size();
+        loadQueriesFromFolder(lab6Dir.absolutePath(), "Lab6");
+        qDebug() << "Загружено из Lab6:" << (m_allQueries.size() - beforeCount) << "запросов";
+    } else {
+        qDebug() << "Папка Lab6 не найдена:" << lab6Dir.absolutePath();
+    }
+
+    qDebug() << "Всего загружено запросов:" << m_allQueries.size();
+
+    if (m_allQueries.isEmpty()) {
+        qDebug() << "ПРЕДУПРЕЖДЕНИЕ: Не загружено ни одного запроса!";
+        QMessageBox::warning(this, "Предупреждение", 
+            QString("Не найдено ни одного запроса в папках:\n%1/Lab5\n%1/Lab6\n\nПроверьте наличие файлов *.sql в этих папках.")
+            .arg(queriesDir.absolutePath()));
+    }
+
+    // Сортируем по номеру
+    std::sort(m_allQueries.begin(), m_allQueries.end(), [](const QueryInfo &a, const QueryInfo &b) {
+        // Сравниваем сначала по типу, потом по номеру
+        if (a.type != b.type) {
+            return a.type < b.type;
+        }
+        // Парсим номер (например, "5.1" -> 5.1, "6.1" -> 6.1)
+        QStringList aParts = a.number.split('.');
+        QStringList bParts = b.number.split('.');
+        if (aParts.size() >= 2 && bParts.size() >= 2) {
+            int aLab = aParts[0].toInt();
+            int aNum = aParts[1].toInt();
+            int bLab = bParts[0].toInt();
+            int bNum = bParts[1].toInt();
+            if (aLab != bLab) return aLab < bLab;
+            return aNum < bNum;
+        }
+        return a.number < b.number;
+    });
+
+    refreshTable();
+}
+
+void QueriesWindow::loadQueriesFromFolder(const QString &folderPath, const QString &type)
+{
+    QDir folderDir(folderPath);
+    if (!folderDir.exists()) {
+        qDebug() << "Папка не найдена:" << folderPath;
+        return;
+    }
+
     QStringList filters;
-    filters << "2.1.*.sql";
-    QFileInfoList files = queriesDir.entryInfoList(filters, QDir::Files, QDir::Name);
+    filters << "*.sql";
+    QFileInfoList files = folderDir.entryInfoList(filters, QDir::Files, QDir::Name);
+    
+    qDebug() << "Найдено файлов в" << type << ":" << files.size();
 
     foreach (const QFileInfo &fileInfo, files) {
-        QString fileName = fileInfo.baseName(); // "2.1.1"
-        QRegExp rx("2\\.1\\.(\\d+)");
+        // Используем completeBaseName() чтобы получить имя файла с точками (например, "5.1" из "5.1.sql")
+        QString fileName = fileInfo.completeBaseName(); // "5.1", "6.1", etc.
+        qDebug() << "Обработка файла:" << fileName << "полное имя:" << fileInfo.fileName();
+        
+        // Проверяем формат имени файла (например, "5.1", "6.1")
+        QRegExp rx("^(\\d+)\\.(\\d+)$");
         if (rx.exactMatch(fileName)) {
-            int queryNumber = rx.cap(1).toInt();
-
+            QString number = fileName; // Сохраняем как "5.1", "6.1"
+            qDebug() << "  Файл соответствует формату, номер:" << number;
+            
             QFile file(fileInfo.absoluteFilePath());
             if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 QTextStream in(&file);
@@ -172,93 +327,188 @@ void QueriesWindow::loadQueries()
                 QString queryText = in.readAll();
                 file.close();
 
-                m_queries[queryNumber] = queryText;
-                m_queryTitles[queryNumber] = parseQueryTitle(queryText);
+                QueryInfo queryInfo;
+                queryInfo.number = number;
+                queryInfo.description = parseQueryDescription(queryText);
+                queryInfo.type = type;
+                queryInfo.filePath = fileInfo.absoluteFilePath();
+                queryInfo.sqlText = queryText;
+
+                m_allQueries.append(queryInfo);
+                qDebug() << "  Запрос добавлен:" << number << "-" << queryInfo.description;
+            } else {
+                qDebug() << "  ОШИБКА: Не удалось открыть файл:" << fileInfo.absoluteFilePath();
+            }
+        } else {
+            qDebug() << "  Файл не соответствует формату (ожидается N.N):" << fileName;
+        }
+    }
+}
+
+QString QueriesWindow::parseQueryDescription(const QString &queryText) const
+{
+    // Парсим описание из комментария, убирая номер запроса
+    // Форматы: 
+    // -- Запрос 5.1: Описание
+    // -- Запрос 2.1.1: Описание
+    // -- 2.1.10: Описание
+    // -- Описание
+    
+    // Ищем первую строку с комментарием
+    QStringList lines = queryText.split('\n');
+    foreach (const QString &line, lines) {
+        QString trimmedLine = line.trimmed();
+        if (trimmedLine.startsWith("--")) {
+            // Убираем "--" в начале
+            QString content = trimmedLine.mid(2).trimmed();
+            
+            // Убираем "Запрос" если есть
+            if (content.startsWith("Запрос", Qt::CaseInsensitive)) {
+                content = content.mid(7).trimmed(); // "Запрос" = 7 символов
+            }
+            
+            // Убираем номер запроса (формат: N.N или N.N.N или N.NN)
+            // Паттерн: начинается с цифр, потом точка, потом цифры, потом может быть еще точка и цифры
+            QRegExp numberRx("^\\d+\\.\\d+(?:\\.\\d+)?[::]?\\s*");
+            content.remove(numberRx);
+            
+            // Убираем двоеточие в начале если осталось
+            if (content.startsWith(":")) {
+                content = content.mid(1).trimmed();
+            }
+            
+            if (!content.isEmpty()) {
+                return content;
             }
         }
     }
-
-    refreshQueryButtons();
-}
-
-QString QueriesWindow::parseQueryTitle(const QString &queryText) const
-{
-    // Парсим название из комментария: -- Запрос 2.1.1: Название
-    QRegExp rx("--\\s*(?:Запрос\\s+\\d+\\.\\d+\\.\\d+[::]?\\s*)?(.+)");
-    if (rx.indexIn(queryText) != -1) {
-        QString title = rx.cap(1).trimmed();
-        if (title.isEmpty()) {
-            return "Запрос";
-        }
-        return title;
-    }
-    return "Запрос";
-}
-
-QString QueriesWindow::getQueryFilePath(int queryNumber) const
-{
-    // Используем ту же логику поиска, что и в loadQueries()
-    QString resourcesPath = findResourcesDirectory();
-    QDir queriesDir(resourcesPath);
     
-    // Если директория не существует, пытаемся создать её
-    if (!queriesDir.exists()) {
-        queriesDir.mkpath(".");
+    return "Запрос без описания";
+}
+
+void QueriesWindow::refreshTable()
+{
+    // Применяем фильтры
+    m_filteredQueries.clear();
+    
+    QString typeFilter = m_typeFilter->currentData().toString();
+    QString searchText = m_searchEdit->text().toLower();
+    
+    foreach (const QueryInfo &query, m_allQueries) {
+        // Фильтр по типу
+        if (!typeFilter.isEmpty() && query.type != typeFilter) {
+            continue;
+        }
+        
+        // Фильтр по поисковому тексту
+        if (!searchText.isEmpty()) {
+            if (!query.description.toLower().contains(searchText) &&
+                !query.number.contains(searchText) &&
+                !query.type.toLower().contains(searchText)) {
+                continue;
+            }
+        }
+        
+        m_filteredQueries.append(query);
     }
     
-    return queriesDir.absoluteFilePath(QString("2.1.%1.sql").arg(queryNumber));
+    populateTable();
 }
 
-void QueriesWindow::refreshQueryButtons()
+void QueriesWindow::populateTable()
 {
-    // Очистка старых кнопок
-    QLayoutItem *item;
-    while ((item = m_gridLayout->takeAt(0)) != nullptr) {
-        if (item->widget()) {
-            item->widget()->deleteLater();
-        }
-        delete item;
+    m_table->setRowCount(0);
+    m_table->setRowCount(m_filteredQueries.size());
+
+    for (int i = 0; i < m_filteredQueries.size(); ++i) {
+        const QueryInfo &query = m_filteredQueries[i];
+
+        // Номер
+        QTableWidgetItem *numberItem = new QTableWidgetItem(query.number);
+        numberItem->setData(Qt::UserRole, i); // Сохраняем индекс для быстрого доступа
+        m_table->setItem(i, 0, numberItem);
+
+        // Описание
+        QTableWidgetItem *descItem = new QTableWidgetItem(query.description);
+        m_table->setItem(i, 1, descItem);
+
+        // Тип
+        QTableWidgetItem *typeItem = new QTableWidgetItem(query.type);
+        m_table->setItem(i, 2, typeItem);
+
+        // Кнопка "Выполнить"
+        QPushButton *runBtn = new QPushButton("Выполнить", this);
+        runBtn->setStyleSheet(
+            "QPushButton {"
+            "    background-color: #4CAF50;"
+            "    color: white;"
+            "    border: none;"
+            "    padding: 5px 10px;"
+            "    border-radius: 4px;"
+            "    font-size: 12px;"
+            "}"
+            "QPushButton:hover { background-color: #45a049; }"
+            "QPushButton:pressed { background-color: #3d8b40; }"
+            "QPushButton:disabled {"
+            "    background-color: #cccccc;"
+            "    color: #666666;"
+            "}"
+        );
+        connect(runBtn, &QPushButton::clicked, [this, query, runBtn]() {
+            // Отключаем кнопку на время выполнения, чтобы предотвратить повторные нажатия
+            runBtn->setEnabled(false);
+            runBtn->setText("Выполняется...");
+            
+            // Обрабатываем события, чтобы UI обновился (кнопка стала неактивной)
+            QApplication::processEvents();
+            
+            // Выполняем запрос
+            runQuery(query);
+            
+            // Включаем кнопку обратно сразу после завершения
+            runBtn->setEnabled(true);
+            runBtn->setText("Выполнить");
+        });
+        m_table->setCellWidget(i, 3, runBtn);
     }
 
-    // Создание кнопок
-    QList<int> queryNumbers = m_queries.keys();
-    std::sort(queryNumbers.begin(), queryNumbers.end());
+    // Автоматическое изменение размера колонки описания
+    m_table->resizeColumnToContents(1);
+}
 
-    int buttonsPerRow = 6;
-    int row = 0, col = 0;
-
-    foreach (int queryNum, queryNumbers) {
-        QPushButton *btn = new QPushButton(QString::number(queryNum), this);
-        QString title = m_queryTitles.value(queryNum, "Запрос");
-        btn->setToolTip(title);
-        btn->setContextMenuPolicy(Qt::CustomContextMenu);
-
-        connect(btn, &QPushButton::clicked, [this, queryNum]() {
-            runQuery(queryNum);
-        });
-
-        connect(btn, &QPushButton::customContextMenuRequested, [this, btn, queryNum](const QPoint &pos) {
-            showQueryContextMenu(btn->mapToGlobal(pos), queryNum);
-        });
-
-        m_gridLayout->addWidget(btn, row, col);
-        col++;
-        if (col >= buttonsPerRow) {
-            col = 0;
-            row++;
-        }
+void QueriesWindow::onTableDoubleClicked(const QModelIndex &index)
+{
+    int row = index.row();
+    if (row >= 0 && row < m_filteredQueries.size()) {
+        runQuery(m_filteredQueries[row]);
     }
 }
 
-void QueriesWindow::runQuery(int queryNumber)
+void QueriesWindow::onFilterChanged()
 {
-    if (!m_queries.contains(queryNumber)) {
+    refreshTable();
+}
+
+void QueriesWindow::onSearchTextChanged(const QString &text)
+{
+    Q_UNUSED(text);
+    refreshTable();
+}
+
+QueryInfo QueriesWindow::getQueryInfoFromRow(int row) const
+{
+    if (row >= 0 && row < m_filteredQueries.size()) {
+        return m_filteredQueries[row];
+    }
+    return QueryInfo();
+}
+
+void QueriesWindow::runQuery(const QueryInfo &queryInfo)
+{
+    if (queryInfo.sqlText.isEmpty()) {
         QMessageBox::warning(this, "Ошибка", "Запрос не найден");
         return;
     }
-
-    QString queryText = m_queries[queryNumber];
-    QString queryTitle = m_queryTitles.value(queryNumber, QString("Запрос %1").arg(queryNumber));
 
     if (!m_dbManager || !m_dbManager->isConnected()) {
         QMessageBox::critical(this, "Ошибка подключения", 
@@ -267,7 +517,7 @@ void QueriesWindow::runQuery(int queryNumber)
     }
 
     bool ok;
-    QSqlQuery query = m_dbManager->executeQuery(queryText, &ok);
+    QSqlQuery query = m_dbManager->executeQuery(queryInfo.sqlText, &ok);
 
     if (!ok) {
         QString errorMsg = m_dbManager->lastError();
@@ -310,6 +560,7 @@ void QueriesWindow::runQuery(int queryNumber)
         return;
     }
 
+    QString queryTitle = QString("%1: %2").arg(queryInfo.number).arg(queryInfo.description);
     QueryResultWindow *resultWindow = new QueryResultWindow(queryTitle, columnNames, rows, this);
     resultWindow->setWindowFlags(Qt::Window);
     resultWindow->raise();
@@ -324,6 +575,14 @@ void QueriesWindow::addNewQuery()
     dialog.setMinimumSize(500, 350);
 
     QVBoxLayout *layout = new QVBoxLayout(&dialog);
+
+    QLabel *typeLabel = new QLabel("Тип лабораторной работы:", &dialog);
+    layout->addWidget(typeLabel);
+
+    QComboBox *typeCombo = new QComboBox(&dialog);
+    typeCombo->addItem("Lab5", "Lab5");
+    typeCombo->addItem("Lab6", "Lab6");
+    layout->addWidget(typeCombo);
 
     QLabel *nameLabel = new QLabel("Название запроса:", &dialog);
     layout->addWidget(nameLabel);
@@ -347,43 +606,78 @@ void QueriesWindow::addNewQuery()
     if (dialog.exec() == QDialog::Accepted) {
         QString queryTitle = nameEdit->text().trimmed();
         QString queryText = queryEdit->toPlainText().trimmed();
+        QString type = typeCombo->currentData().toString();
 
         if (queryTitle.isEmpty() || queryText.isEmpty()) {
             QMessageBox::warning(this, "Ошибка", "Название и запрос не могут быть пустыми!");
             return;
         }
 
-        // Находим следующий номер запроса
-        int newQueryNumber = 1;
-        if (!m_queries.isEmpty()) {
-            newQueryNumber = m_queries.keys().last() + 1;
+        // Находим следующий номер запроса для выбранного типа
+        int nextNumber = 1;
+        QString prefix = (type == "Lab5") ? "5" : "6";
+        
+        foreach (const QueryInfo &q, m_allQueries) {
+            if (q.type == type) {
+                QStringList parts = q.number.split('.');
+                if (parts.size() >= 2 && parts[0] == prefix) {
+                    int num = parts[1].toInt();
+                    if (num >= nextNumber) {
+                        nextNumber = num + 1;
+                    }
+                }
+            }
         }
 
-        // Сохраняем запрос в файл
-        QString filePath = getQueryFilePath(newQueryNumber);
+        QString number = QString("%1.%2").arg(prefix).arg(nextNumber);
+        QString resourcesPath = findResourcesDirectory();
+        QDir typeDir(QDir(resourcesPath).absoluteFilePath(type));
+        
+        if (!typeDir.exists()) {
+            typeDir.mkpath(".");
+        }
+
+        QString fileName = QString("%1.sql").arg(number);
+        QString filePath = typeDir.absoluteFilePath(fileName);
+
         QFile file(filePath);
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream out(&file);
             out.setCodec("UTF-8");
-            out << QString("-- Запрос %1: %2\n").arg(newQueryNumber).arg(queryTitle);
+            out << QString("-- Запрос %1: %2\n").arg(number).arg(queryTitle);
             out << queryText;
             file.close();
 
-            // Добавляем в список
-            m_queries[newQueryNumber] = queryText;
-            m_queryTitles[newQueryNumber] = queryTitle;
-            refreshQueryButtons();
+            // Перезагружаем запросы
+            loadQueries();
 
-            // Выполняем запрос
-            runQuery(newQueryNumber);
+            // Находим и выполняем новый запрос
+            foreach (const QueryInfo &q, m_allQueries) {
+                if (q.number == number && q.type == type) {
+                    runQuery(q);
+                    break;
+                }
+            }
         } else {
             QMessageBox::critical(this, "Ошибка", "Не удалось сохранить запрос в файл");
         }
     }
 }
 
-void QueriesWindow::showQueryContextMenu(const QPoint &pos, int queryNumber)
+void QueriesWindow::showQueryContextMenu(const QPoint &pos)
 {
+    QTableWidgetItem *item = m_table->itemAt(pos);
+    if (!item) {
+        return;
+    }
+
+    int row = item->row();
+    if (row < 0 || row >= m_filteredQueries.size()) {
+        return;
+    }
+
+    QueryInfo queryInfo = m_filteredQueries[row];
+
     QMenu menu(this);
     menu.setStyleSheet(
         "QMenu { background-color: white; border: 1px solid #ccc; }"
@@ -394,45 +688,39 @@ void QueriesWindow::showQueryContextMenu(const QPoint &pos, int queryNumber)
     QAction *deleteAction = menu.addAction("Удалить запрос");
     QAction *backupAction = menu.addAction("Создать резервную копию");
 
-    QAction *selectedAction = menu.exec(pos);
+    QAction *selectedAction = menu.exec(m_table->viewport()->mapToGlobal(pos));
 
     if (selectedAction == deleteAction) {
-        deleteQuery(queryNumber);
+        deleteQuery(queryInfo);
     } else if (selectedAction == backupAction) {
-        backupQuery(queryNumber);
+        backupQuery(queryInfo);
     }
 }
 
-void QueriesWindow::deleteQuery(int queryNumber)
+void QueriesWindow::deleteQuery(const QueryInfo &queryInfo)
 {
     int ret = QMessageBox::question(this, "Удаление запроса",
-        QString("Вы уверены, что хотите удалить запрос %1?").arg(queryNumber),
+        QString("Вы уверены, что хотите удалить запрос %1 (%2)?").arg(queryInfo.number).arg(queryInfo.type),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 
     if (ret == QMessageBox::Yes) {
         // Удаляем файл
-        QString filePath = getQueryFilePath(queryNumber);
-        QFile::remove(filePath);
+        QFile::remove(queryInfo.filePath);
 
-        // Удаляем из списка
-        m_queries.remove(queryNumber);
-        m_queryTitles.remove(queryNumber);
-        refreshQueryButtons();
+        // Перезагружаем запросы
+        loadQueries();
 
-        QMessageBox::information(this, "Успех", QString("Запрос %1 удален").arg(queryNumber));
+        QMessageBox::information(this, "Успех", QString("Запрос %1 удален").arg(queryInfo.number));
     }
 }
 
-void QueriesWindow::backupQuery(int queryNumber)
+void QueriesWindow::backupQuery(const QueryInfo &queryInfo)
 {
-    if (!m_queries.contains(queryNumber)) {
-        return;
-    }
-
     // Определяем путь к директории exports через BackupManager
     BackupManager tempBackupManager(m_dbManager);
     QString exportsDir = tempBackupManager.getExportsDirectory();
-    QString defaultPath = QDir(exportsDir).absoluteFilePath(QString("query_%1_backup.sql").arg(queryNumber));
+    QString numberCopy = queryInfo.number;
+    QString defaultPath = QDir(exportsDir).absoluteFilePath(QString("query_%1_%2_backup.sql").arg(queryInfo.type).arg(numberCopy.replace('.', '_')));
     
     QString fileName = QFileDialog::getSaveFileName(this,
         "Сохранить резервную копию запроса",
@@ -444,8 +732,8 @@ void QueriesWindow::backupQuery(int queryNumber)
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream out(&file);
             out.setCodec("UTF-8");
-            out << QString("-- Резервная копия запроса %1: %2\n").arg(queryNumber).arg(m_queryTitles[queryNumber]);
-            out << m_queries[queryNumber];
+            out << QString("-- Резервная копия запроса %1 (%2): %3\n").arg(queryInfo.number).arg(queryInfo.type).arg(queryInfo.description);
+            out << queryInfo.sqlText;
             file.close();
             QMessageBox::information(this, "Успех", "Резервная копия создана:\n" + fileName);
         }
@@ -460,4 +748,3 @@ void QueriesWindow::goBack()
     }
     hide();
 }
-

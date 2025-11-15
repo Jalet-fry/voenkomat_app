@@ -23,6 +23,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupStyles();
     
     if (!connectToDatabase()) {
+        updateConnectionStatus();
         QString errorDetails = m_dbManager->lastError();
         QString message = QString("Не удалось подключиться к базе данных.\n\n")
                          + QString("Ошибка: %1\n\n").arg(errorDetails.isEmpty() ? "Неизвестная ошибка" : errorDetails)
@@ -34,6 +35,23 @@ MainWindow::MainWindow(QWidget *parent)
                          + QString("4. Доступность драйвера QPSQL в Qt");
         
         QMessageBox::critical(this, "Ошибка подключения", message);
+    } else {
+        updateConnectionStatus();
+    }
+}
+
+void MainWindow::updateConnectionStatus()
+{
+    if (!m_statusLabel) {
+        return;
+    }
+    
+    if (m_dbManager && m_dbManager->isConnected()) {
+        m_statusLabel->setText("✓ Подключено к базе данных");
+        m_statusLabel->setStyleSheet("font-size: 12px; padding: 5px; background-color: #90EE90; color: black; border-radius: 4px;");
+    } else {
+        m_statusLabel->setText("✗ Не подключено к базе данных");
+        m_statusLabel->setStyleSheet("font-size: 12px; padding: 5px; background-color: #FFB6C1; color: black; border-radius: 4px;");
     }
 }
 
@@ -71,6 +89,12 @@ void MainWindow::setupUI()
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setStyleSheet("font-size: 24px; color: #333; font-weight: bold;");
     m_layout->addWidget(m_titleLabel);
+
+    // Статус подключения к БД
+    m_statusLabel = new QLabel(this);
+    m_statusLabel->setAlignment(Qt::AlignCenter);
+    m_statusLabel->setStyleSheet("font-size: 12px; padding: 5px;");
+    m_layout->addWidget(m_statusLabel);
 
     // Кнопки
     m_queriesBtn = new QPushButton("Запросы", this);
