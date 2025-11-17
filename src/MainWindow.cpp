@@ -217,12 +217,34 @@ void MainWindow::openTableAdditionWindow()
 void MainWindow::exportAllData()
 {
     BackupManager backupManager(m_dbManager);
-    if (backupManager.exportAllTables()) {
-        QString exportsDir = backupManager.getExportsDirectory();
-        QMessageBox::information(this, "Успех", 
-            QString("Данные успешно экспортированы в папку:\n%1").arg(exportsDir));
-    } else {
-        QMessageBox::critical(this, "Ошибка", "Не удалось экспортировать данные:\n" + backupManager.lastError());
+    
+    // Предлагаем выбор формата экспорта
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("Экспорт данных");
+    msgBox.setText("Выберите формат экспорта:");
+    QPushButton *sqlBtn = msgBox.addButton("SQL", QMessageBox::ActionRole);
+    QPushButton *xlsxBtn = msgBox.addButton("Excel", QMessageBox::ActionRole);
+    QPushButton *cancelBtn = msgBox.addButton("Отмена", QMessageBox::RejectRole);
+    msgBox.exec();
+    
+    if (msgBox.clickedButton() == sqlBtn) {
+        // Экспорт в SQL
+        if (backupManager.exportAllTables()) {
+            QString backupsDir = backupManager.getBackupsExportPath("sql");
+            QMessageBox::information(this, "Успех", 
+                QString("Данные успешно экспортированы в папку:\n%1\n\nФайл сохранен в папку: exports/backups/sql/").arg(backupsDir));
+        } else {
+            QMessageBox::critical(this, "Ошибка", "Не удалось экспортировать данные:\n" + backupManager.lastError());
+        }
+    } else if (msgBox.clickedButton() == xlsxBtn) {
+        // Экспорт в Excel
+        if (backupManager.exportAllTablesToXlsx()) {
+            QString xlsxPath = backupManager.lastError(); // В случае успеха здесь путь к файлу
+            QMessageBox::information(this, "Успех", 
+                QString("Все таблицы успешно экспортированы в Excel файл:\n%1\n\nФайл сохранен в папку: exports/backups/xlsx/").arg(xlsxPath));
+        } else {
+            QMessageBox::critical(this, "Ошибка", "Не удалось экспортировать данные:\n" + backupManager.lastError());
+        }
     }
 }
 

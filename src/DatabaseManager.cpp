@@ -602,9 +602,11 @@ QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const 
     QSqlQuery query(m_db);
     query.prepare(
         "SELECT "
+        "    tc.constraint_name, "
         "    kcu.column_name, "
         "    ccu.table_name AS foreign_table_name, "
-        "    ccu.column_name AS foreign_column_name "
+        "    ccu.column_name AS foreign_column_name, "
+        "    rc.delete_rule "
         "FROM information_schema.table_constraints AS tc "
         "JOIN information_schema.key_column_usage AS kcu "
         "    ON tc.constraint_name = kcu.constraint_name "
@@ -612,6 +614,9 @@ QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const 
         "JOIN information_schema.constraint_column_usage AS ccu "
         "    ON ccu.constraint_name = tc.constraint_name "
         "    AND ccu.table_schema = tc.table_schema "
+        "LEFT JOIN information_schema.referential_constraints AS rc "
+        "    ON rc.constraint_name = tc.constraint_name "
+        "    AND rc.constraint_schema = tc.table_schema "
         "WHERE tc.constraint_type = 'FOREIGN KEY' "
         "    AND tc.table_schema = 'public' "
         "    AND tc.table_name = :table_name"
@@ -621,9 +626,14 @@ QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const 
     if (query.exec()) {
         while (query.next()) {
             ForeignKeyInfo fkInfo;
-            fkInfo.columnName = query.value(0).toString();
-            fkInfo.referencedTable = query.value(1).toString();
-            fkInfo.referencedColumn = query.value(2).toString();
+            fkInfo.constraintName = query.value(0).toString();
+            fkInfo.columnName = query.value(1).toString();
+            fkInfo.referencedTable = query.value(2).toString();
+            fkInfo.referencedColumn = query.value(3).toString();
+            fkInfo.deleteRule = query.value(4).toString();
+            if (fkInfo.deleteRule.isEmpty()) {
+                fkInfo.deleteRule = "NO ACTION";
+            }
             fkInfoList << fkInfo;
         }
     } else {
@@ -631,6 +641,93 @@ QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const 
     }
     
     return fkInfoList;
+}
+
+QString DatabaseManager::getForeignKeyConstraintName(const QString &tableName, const QString &columnName)
+{
+    QSqlQuery query(m_db);
+    query.prepare(
+        "SELECT tc.constraint_name "
+        "FROM information_schema.table_constraints AS tc "
+        "JOIN information_schema.key_column_usage AS kcu "
+        "    ON tc.constraint_name = kcu.constraint_name "
+        "    AND tc.table_schema = kcu.table_schema "
+        "WHERE tc.constraint_type = 'FOREIGN KEY' "
+        "    AND tc.table_schema = 'public' "
+        "    AND tc.table_name = :table_name "
+        "    AND kcu.column_name = :column_name "
+        "LIMIT 1"
+    );
+    query.bindValue(":table_name", tableName);
+    query.bindValue(":column_name", columnName);
+    
+    if (query.exec() && query.next()) {
+        return query.value(0).toString();
+    }
+    
+    return QString();
+}
+
+QString DatabaseManager::getForeignKeyDeleteRule(const QString &tableName, const QString &constraintName)
+{
+    QSqlQuery query(m_db);
+    query.prepare(
+        "SELECT delete_rule "
+        "FROM information_schema.referential_constraints "
+        "WHERE constraint_schema = 'public' "
+        "    AND constraint_name = :constraint_name"
+    );
+    query.bindValue(":constraint_name", constraintName);
+    
+    if (query.exec() && query.next()) {
+        return query.value(0).toString();
+    }
+    
+    return "NO ACTION";
+}
+
+bool DatabaseManager::addForeignKey(const QString &tableName, const QString &columnName,
+                                    const QString &referencedTable, const QString &referencedColumn,
+                                    const QString &deleteRule)
+{
+    // Генерируем имя constraint
+    QString constraintName = QString("fk_%1_%2").arg(tableName).arg(columnName);
+    constraintName = constraintName.replace("\"", "").toLower();
+    
+    // Проверяем, существует ли уже constraint с таким именем
+    QString existingName = getForeignKeyConstraintName(tableName, columnName);
+    if (!existingName.isEmpty()) {
+        m_lastError = QString("Внешний ключ для колонки %1 уже существует").arg(columnName);
+        return false;
+    }
+    
+    // Формируем SQL запрос
+    QString sql = QString("ALTER TABLE %1 ADD CONSTRAINT %2 FOREIGN KEY (%3) REFERENCES %4(%5)")
+        .arg(escapeIdentifier(tableName))
+        .arg(escapeIdentifier(constraintName))
+        .arg(escapeIdentifier(columnName))
+        .arg(escapeIdentifier(referencedTable))
+        .arg(escapeIdentifier(referencedColumn));
+    
+    // Добавляем ON DELETE правило
+    if (deleteRule == "CASCADE" || deleteRule == "RESTRICT" || deleteRule == "SET NULL" || deleteRule == "NO ACTION") {
+        sql += QString(" ON DELETE %1").arg(deleteRule);
+    }
+    
+    bool ok;
+    executeQuery(sql, &ok);
+    return ok;
+}
+
+bool DatabaseManager::removeForeignKey(const QString &tableName, const QString &constraintName)
+{
+    QString sql = QString("ALTER TABLE %1 DROP CONSTRAINT %2")
+        .arg(escapeIdentifier(tableName))
+        .arg(escapeIdentifier(constraintName));
+    
+    bool ok;
+    executeQuery(sql, &ok);
+    return ok;
 }
 
 bool DatabaseManager::recordExists(const QString &tableName, const QString &columnName, const QVariant &value)

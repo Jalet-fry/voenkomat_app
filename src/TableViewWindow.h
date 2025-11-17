@@ -24,6 +24,7 @@ private slots:
     void showContextMenu(const QPoint &pos);
     void goBack();
     void exportToCSV();
+    void exportToXlsx();
 
 private:
     void setupUI();

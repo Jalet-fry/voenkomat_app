@@ -58,11 +58,19 @@ public:
     QStringList getForeignKeys(const QString &tableName);
     // Структура для хранения информации о внешнем ключе
     struct ForeignKeyInfo {
-        QString columnName;
-        QString referencedTable;
-        QString referencedColumn;
+        QString constraintName;      // Имя constraint
+        QString columnName;          // Колонка текущей таблицы
+        QString referencedTable;     // Целевая таблица
+        QString referencedColumn;    // Целевая колонка
+        QString deleteRule;          // ON DELETE правило (CASCADE, RESTRICT, SET NULL, NO ACTION)
     };
     QList<ForeignKeyInfo> getForeignKeyInfo(const QString &tableName);
+    QString getForeignKeyConstraintName(const QString &tableName, const QString &columnName);
+    QString getForeignKeyDeleteRule(const QString &tableName, const QString &constraintName);
+    bool addForeignKey(const QString &tableName, const QString &columnName, 
+                      const QString &referencedTable, const QString &referencedColumn,
+                      const QString &deleteRule = "RESTRICT");
+    bool removeForeignKey(const QString &tableName, const QString &constraintName);
     bool recordExists(const QString &tableName, const QString &columnName, const QVariant &value);
     QStringList getUniqueConstraints(const QString &tableName);
     QStringList getIndexes(const QString &tableName);

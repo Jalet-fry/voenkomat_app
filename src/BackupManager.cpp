@@ -7,6 +7,9 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QApplication>
+#include "xlsxdocument.h"
+#include "xlsxformat.h"
+using namespace QXlsx;
 
 QString BackupManager::getExportsDirectory() const
 {
@@ -62,6 +65,39 @@ QString BackupManager::getExportsDirectory() const
     return exportsPath;
 }
 
+QString BackupManager::getTablesExportPath(const QString &format) const
+{
+    QString baseDir = getExportsDirectory();
+    QString path = QDir(baseDir).absoluteFilePath(QString("tables/%1").arg(format.toLower()));
+    QDir dir(path);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    return path;
+}
+
+QString BackupManager::getQueriesExportPath(const QString &format) const
+{
+    QString baseDir = getExportsDirectory();
+    QString path = QDir(baseDir).absoluteFilePath(QString("queries/%1").arg(format.toLower()));
+    QDir dir(path);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    return path;
+}
+
+QString BackupManager::getBackupsExportPath(const QString &format) const
+{
+    QString baseDir = getExportsDirectory();
+    QString path = QDir(baseDir).absoluteFilePath(QString("backups/%1").arg(format.toLower()));
+    QDir dir(path);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    return path;
+}
+
 BackupManager::BackupManager(DatabaseManager *dbManager)
     : m_dbManager(dbManager)
 {
@@ -85,18 +121,11 @@ bool BackupManager::exportAllTables()
         return false;
     }
 
-    // Получаем путь к директории exports
-    QString exportsDir = getExportsDirectory();
-    QDir dir(exportsDir);
-    if (!dir.exists()) {
-        if (!dir.mkpath(".")) {
-            m_lastError = QString("Не удалось создать директорию exports: %1").arg(exportsDir);
-            return false;
-        }
-    }
+    // Получаем путь к директории для резервных копий SQL
+    QString backupsDir = getBackupsExportPath("sql");
 
-    QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
-    QString sqlPath = QDir(exportsDir).absoluteFilePath(QString("full_export_%1.sql").arg(timestamp));
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString sqlPath = QDir(backupsDir).absoluteFilePath(QString("backup_%1.sql").arg(timestamp));
 
     QFile file(sqlPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -118,6 +147,93 @@ bool BackupManager::exportAllTables()
     return true;
 }
 
+bool BackupManager::exportAllTablesToXlsx()
+{
+    if (!m_dbManager) {
+        m_lastError = "DatabaseManager не инициализирован";
+        return false;
+    }
+    
+    if (!m_dbManager->isConnected()) {
+        m_lastError = "База данных не подключена. Проверьте параметры подключения.";
+        return false;
+    }
+
+    QStringList tables = m_dbManager->getTableList();
+    if (tables.isEmpty()) {
+        m_lastError = "В базе данных нет таблиц для экспорта";
+        return false;
+    }
+
+    // Получаем путь к директории для резервных копий Excel
+    QString backupsDir = getBackupsExportPath("xlsx");
+
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString xlsxPath = QDir(backupsDir).absoluteFilePath(QString("backup_%1.xlsx").arg(timestamp));
+
+    // Создаем Excel документ
+    Document xlsx;
+
+    // Экспортируем каждую таблицу на отдельный лист
+    foreach (const QString &tableName, tables) {
+        // Создаем новый лист для таблицы
+        xlsx.addSheet(tableName);
+        xlsx.selectSheet(tableName);
+
+        // Получаем данные таблицы
+        QSqlQuery query = m_dbManager->executeQuery(QString("SELECT * FROM %1").arg(tableName));
+        if (query.lastError().isValid()) {
+            m_lastError = query.lastError().text();
+            continue; // Пропускаем таблицу с ошибкой
+        }
+
+        QStringList columnNames = m_dbManager->getColumnList(tableName);
+        if (columnNames.isEmpty()) {
+            continue; // Пропускаем пустые таблицы
+        }
+
+        // Записываем заголовки
+        for (int col = 0; col < columnNames.size(); ++col) {
+            xlsx.write(1, col + 1, columnNames[col]);
+        }
+
+        // Форматируем заголовки
+        Format headerFormat;
+        headerFormat.setFontBold(true);
+        headerFormat.setFillPattern(Format::PatternSolid);
+        headerFormat.setPatternBackgroundColor(QColor(200, 200, 200));
+        for (int col = 1; col <= columnNames.size(); ++col) {
+            xlsx.write(1, col, xlsx.read(1, col), headerFormat);
+        }
+
+        // Записываем данные
+        int row = 2;
+        while (query.next()) {
+            for (int col = 0; col < columnNames.size(); ++col) {
+                QVariant value = query.value(col);
+                if (!value.isNull()) {
+                    xlsx.write(row, col + 1, value);
+                }
+            }
+            row++;
+        }
+
+        // Автоматически подгоняем ширину колонок
+        for (int col = 1; col <= columnNames.size(); ++col) {
+            xlsx.setColumnWidth(col, 15);
+        }
+    }
+
+    // Сохраняем файл
+    if (xlsx.saveAs(xlsxPath)) {
+        m_lastError = xlsxPath; // Сохраняем путь к файлу для отображения
+        return true;
+    } else {
+        m_lastError = QString("Не удалось сохранить файл: %1").arg(xlsxPath);
+        return false;
+    }
+}
+
 bool BackupManager::exportTable(const QString &tableName, const QString &filePath)
 {
     if (!m_dbManager || !m_dbManager->isConnected()) {
@@ -129,17 +245,10 @@ bool BackupManager::exportTable(const QString &tableName, const QString &filePat
     
     QString finalPath = filePath;
     if (finalPath.isEmpty()) {
-        // Получаем путь к директории exports
-        QString exportsDir = getExportsDirectory();
-        QDir dir(exportsDir);
-        if (!dir.exists()) {
-            if (!dir.mkpath(".")) {
-                m_lastError = QString("Не удалось создать директорию exports: %1").arg(exportsDir);
-                return false;
-            }
-        }
-        QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
-        finalPath = QDir(exportsDir).absoluteFilePath(QString("%1_backup_%2.sql").arg(tableName).arg(timestamp));
+        // Получаем путь к директории для резервных копий SQL
+        QString backupsDir = getBackupsExportPath("sql");
+        QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+        finalPath = QDir(backupsDir).absoluteFilePath(QString("backup_%1_%2.sql").arg(tableName).arg(timestamp));
     }
 
     QFile file(finalPath);

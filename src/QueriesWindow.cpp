@@ -561,7 +561,7 @@ void QueriesWindow::runQuery(const QueryInfo &queryInfo)
     }
 
     QString queryTitle = QString("%1: %2").arg(queryInfo.number).arg(queryInfo.description);
-    QueryResultWindow *resultWindow = new QueryResultWindow(queryTitle, columnNames, rows, this);
+    QueryResultWindow *resultWindow = new QueryResultWindow(queryTitle, columnNames, rows, m_dbManager, this);
     resultWindow->setWindowFlags(Qt::Window);
     resultWindow->raise();
     resultWindow->activateWindow();

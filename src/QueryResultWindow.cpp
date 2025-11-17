@@ -1,19 +1,28 @@
 #include "QueryResultWindow.h"
+#include "BackupManager.h"
+#include "DatabaseManager.h"
 #include <QLabel>
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QTextStream>
 #include <QMessageBox>
 #include <QFile>
+#include <QDir>
+#include <QDateTime>
+#include "xlsxdocument.h"
+#include "xlsxformat.h"
+using namespace QXlsx;
 
 QueryResultWindow::QueryResultWindow(const QString &title,
                                      const QStringList &columnNames,
                                      const QList<QList<QVariant>> &rows,
+                                     DatabaseManager *dbManager,
                                      QWidget *parent)
     : QWidget(parent)
     , m_title(title)
     , m_columnNames(columnNames)
     , m_rows(rows)
+    , m_dbManager(dbManager)
 {
     setWindowTitle(QString("Результаты запроса: %1").arg(title));
     setGeometry(200, 200, 800, 600);
@@ -76,10 +85,15 @@ void QueryResultWindow::setupUI()
     // Кнопки
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     
-    QPushButton *exportBtn = new QPushButton("Экспорт в CSV", this);
-    exportBtn->setMinimumHeight(40);
-    connect(exportBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToCSV);
-    buttonLayout->addWidget(exportBtn);
+    QPushButton *exportCsvBtn = new QPushButton("Экспорт в CSV", this);
+    exportCsvBtn->setMinimumHeight(40);
+    connect(exportCsvBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToCSV);
+    buttonLayout->addWidget(exportCsvBtn);
+    
+    QPushButton *exportXlsxBtn = new QPushButton("Экспорт в Excel", this);
+    exportXlsxBtn->setMinimumHeight(40);
+    connect(exportXlsxBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToXlsx);
+    buttonLayout->addWidget(exportXlsxBtn);
     
     QPushButton *backBtn = new QPushButton("Назад", this);
     backBtn->setMinimumHeight(40);
@@ -134,8 +148,26 @@ void QueryResultWindow::goBack()
 
 void QueryResultWindow::exportToCSV()
 {
+    // Получаем путь к директории для экспорта запросов в CSV
+    QString queriesDir;
+    if (m_dbManager) {
+        BackupManager backupManager(m_dbManager);
+        queriesDir = backupManager.getQueriesExportPath("csv");
+    } else {
+        QDir dir("exports/queries/csv");
+        if (!dir.exists()) {
+            dir.mkpath(".");
+        }
+        queriesDir = dir.absolutePath();
+    }
+    
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString defaultFileName = QString("query_%1.csv").arg(timestamp);
+    QString defaultPath = QDir(queriesDir).absoluteFilePath(defaultFileName);
+    
     QString fileName = QFileDialog::getSaveFileName(this,
-        "Сохранить результаты в CSV", "",
+        "Сохранить результаты в CSV",
+        defaultPath,
         "CSV Files (*.csv);;All Files (*)");
     
     if (fileName.isEmpty()) {
@@ -185,5 +217,81 @@ void QueryResultWindow::exportToCSV()
     file.close();
     QMessageBox::information(this, "Успех", 
                             QString("Данные успешно экспортированы в файл:\n%1").arg(fileName));
+}
+
+void QueryResultWindow::exportToXlsx()
+{
+    // Получаем путь к директории для экспорта запросов в Excel
+    QString queriesDir;
+    if (m_dbManager) {
+        BackupManager backupManager(m_dbManager);
+        queriesDir = backupManager.getQueriesExportPath("xlsx");
+    } else {
+        QDir dir("exports/queries/xlsx");
+        if (!dir.exists()) {
+            dir.mkpath(".");
+        }
+        queriesDir = dir.absolutePath();
+    }
+    
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString defaultFileName = QString("query_%1.xlsx").arg(timestamp);
+    QString defaultPath = QDir(queriesDir).absoluteFilePath(defaultFileName);
+    
+    QString fileName = QFileDialog::getSaveFileName(this,
+        "Сохранить результаты в Excel",
+        defaultPath,
+        "Excel Files (*.xlsx);;All Files (*)");
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    // Добавляем расширение .xlsx если его нет
+    if (!fileName.endsWith(".xlsx", Qt::CaseInsensitive)) {
+        fileName += ".xlsx";
+    }
+    
+    // Создаем Excel документ
+    Document xlsx;
+    
+    // Записываем заголовки
+    for (int col = 0; col < m_columnNames.size(); ++col) {
+        QString header = getDisplayName(m_columnNames[col]);
+        xlsx.write(1, col + 1, header);
+    }
+    
+    // Форматируем заголовки
+    Format headerFormat;
+    headerFormat.setFontBold(true);
+    headerFormat.setFillPattern(Format::PatternSolid);
+    headerFormat.setPatternBackgroundColor(QColor(200, 200, 200));
+    for (int col = 1; col <= m_columnNames.size(); ++col) {
+        xlsx.write(1, col, xlsx.read(1, col), headerFormat);
+    }
+    
+    // Записываем данные
+    for (int row = 0; row < m_rows.size(); ++row) {
+        for (int col = 0; col < m_columnNames.size() && col < m_rows[row].size(); ++col) {
+            QVariant value = m_rows[row][col];
+            if (!value.isNull()) {
+                xlsx.write(row + 2, col + 1, value);
+            }
+        }
+    }
+    
+    // Автоматически подгоняем ширину колонок
+    for (int col = 1; col <= m_columnNames.size(); ++col) {
+        xlsx.setColumnWidth(col, 15);
+    }
+    
+    // Сохраняем файл
+    if (xlsx.saveAs(fileName)) {
+        QMessageBox::information(this, "Успех", 
+                                QString("Данные успешно экспортированы в Excel:\n%1").arg(fileName));
+    } else {
+        QMessageBox::critical(this, "Ошибка", 
+                            QString("Не удалось сохранить файл:\n%1").arg(fileName));
+    }
 }
 

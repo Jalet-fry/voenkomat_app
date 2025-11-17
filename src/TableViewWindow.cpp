@@ -1,5 +1,6 @@
 #include "TableViewWindow.h"
 #include "RecordDialog.h"
+#include "BackupManager.h"
 #include <QLabel>
 #include <QMessageBox>
 #include <QHeaderView>
@@ -9,6 +10,11 @@
 #include <QFileDialog>
 #include <QTextStream>
 #include <QFile>
+#include <QDir>
+#include <QDateTime>
+#include "xlsxdocument.h"
+#include "xlsxformat.h"
+using namespace QXlsx;
 
 TableViewWindow::TableViewWindow(DatabaseManager *dbManager, const QString &tableName, QWidget *parent)
     : QWidget(parent)
@@ -94,10 +100,15 @@ void TableViewWindow::setupUI()
     connect(addBtn, &QPushButton::clicked, this, &TableViewWindow::addRecord);
     btnLayout->addWidget(addBtn);
     
-    QPushButton *exportBtn = new QPushButton("Экспорт в CSV", this);
-    exportBtn->setMinimumHeight(40);
-    connect(exportBtn, &QPushButton::clicked, this, &TableViewWindow::exportToCSV);
-    btnLayout->addWidget(exportBtn);
+    QPushButton *exportCsvBtn = new QPushButton("Экспорт в CSV", this);
+    exportCsvBtn->setMinimumHeight(40);
+    connect(exportCsvBtn, &QPushButton::clicked, this, &TableViewWindow::exportToCSV);
+    btnLayout->addWidget(exportCsvBtn);
+    
+    QPushButton *exportXlsxBtn = new QPushButton("Экспорт в Excel", this);
+    exportXlsxBtn->setMinimumHeight(40);
+    connect(exportXlsxBtn, &QPushButton::clicked, this, &TableViewWindow::exportToXlsx);
+    btnLayout->addWidget(exportXlsxBtn);
     
     QPushButton *backBtn = new QPushButton("Назад", this);
     backBtn->setMinimumHeight(40);
@@ -375,8 +386,17 @@ void TableViewWindow::exportToCSV()
         return;
     }
     
+    // Получаем путь к директории для экспорта таблиц в CSV
+    BackupManager backupManager(m_dbManager);
+    QString tablesDir = backupManager.getTablesExportPath("csv");
+    
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString defaultFileName = QString("table_%1_%2.csv").arg(m_tableName).arg(timestamp);
+    QString defaultPath = QDir(tablesDir).absoluteFilePath(defaultFileName);
+    
     QString fileName = QFileDialog::getSaveFileName(this,
-        QString("Экспорт таблицы %1 в CSV").arg(m_tableName), "",
+        QString("Экспорт таблицы %1 в CSV").arg(m_tableName),
+        defaultPath,
         "CSV Files (*.csv);;All Files (*)");
     
     if (fileName.isEmpty()) {
@@ -430,5 +450,80 @@ void TableViewWindow::exportToCSV()
     file.close();
     QMessageBox::information(this, "Успех", 
                             QString("Таблица успешно экспортирована в файл:\n%1").arg(fileName));
+}
+
+void TableViewWindow::exportToXlsx()
+{
+    if (!m_table || m_table->rowCount() == 0) {
+        QMessageBox::information(this, "Информация", "Нет данных для экспорта");
+        return;
+    }
+    
+    // Получаем путь к директории для экспорта таблиц в Excel
+    BackupManager backupManager(m_dbManager);
+    QString tablesDir = backupManager.getTablesExportPath("xlsx");
+    
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString defaultFileName = QString("table_%1_%2.xlsx").arg(m_tableName).arg(timestamp);
+    QString defaultPath = QDir(tablesDir).absoluteFilePath(defaultFileName);
+    
+    QString fileName = QFileDialog::getSaveFileName(this,
+        QString("Экспорт таблицы %1 в Excel").arg(m_tableName),
+        defaultPath,
+        "Excel Files (*.xlsx);;All Files (*)");
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    // Добавляем расширение .xlsx если его нет
+    if (!fileName.endsWith(".xlsx", Qt::CaseInsensitive)) {
+        fileName += ".xlsx";
+    }
+    
+    // Создаем Excel документ
+    Document xlsx;
+    
+    // Записываем заголовки
+    for (int col = 0; col < m_table->columnCount(); ++col) {
+        QString header = m_table->horizontalHeaderItem(col) ? 
+                        m_table->horizontalHeaderItem(col)->text() : 
+                        QString("Column %1").arg(col + 1);
+        xlsx.write(1, col + 1, header);
+    }
+    
+    // Форматируем заголовки
+    Format headerFormat;
+    headerFormat.setFontBold(true);
+    headerFormat.setFillPattern(Format::PatternSolid);
+    headerFormat.setPatternBackgroundColor(QColor(200, 200, 200));
+    for (int col = 1; col <= m_table->columnCount(); ++col) {
+        xlsx.write(1, col, xlsx.read(1, col), headerFormat);
+    }
+    
+    // Записываем данные
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        for (int col = 0; col < m_table->columnCount(); ++col) {
+            QTableWidgetItem *item = m_table->item(row, col);
+            if (item) {
+                QVariant value = item->text();
+                xlsx.write(row + 2, col + 1, value);
+            }
+        }
+    }
+    
+    // Автоматически подгоняем ширину колонок
+    for (int col = 1; col <= m_table->columnCount(); ++col) {
+        xlsx.setColumnWidth(col, 15);
+    }
+    
+    // Сохраняем файл
+    if (xlsx.saveAs(fileName)) {
+        QMessageBox::information(this, "Успех", 
+                                QString("Таблица успешно экспортирована в Excel:\n%1").arg(fileName));
+    } else {
+        QMessageBox::critical(this, "Ошибка", 
+                            QString("Не удалось сохранить файл:\n%1").arg(fileName));
+    }
 }
 

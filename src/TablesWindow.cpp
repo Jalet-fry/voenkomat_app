@@ -6,6 +6,7 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QDir>
+#include <QDateTime>
 
 TablesWindow::TablesWindow(DatabaseManager *dbManager, QWidget *parent)
     : QWidget(parent)
@@ -192,8 +193,9 @@ void TablesWindow::deleteTable(const QString &tableName)
 void TablesWindow::backupTable(const QString &tableName)
 {
     BackupManager backupManager(m_dbManager);
-    QString exportsDir = backupManager.getExportsDirectory();
-    QString defaultPath = QDir(exportsDir).absoluteFilePath(QString("%1_backup.sql").arg(tableName));
+    QString backupsDir = backupManager.getBackupsExportPath("sql");
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString defaultPath = QDir(backupsDir).absoluteFilePath(QString("backup_%1_%2.sql").arg(tableName).arg(timestamp));
     
     QString fileName = QFileDialog::getSaveFileName(this,
         "Сохранить резервную копию", defaultPath,

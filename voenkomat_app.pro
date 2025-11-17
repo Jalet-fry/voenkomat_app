@@ -49,3 +49,6 @@ win32 {
 # 2. В директории проекта (для разработки)
 RESOURCES_PATH = $$PWD/resources
 
+# Подключение QXlsx для экспорта в Excel
+include(qxlsx/QXlsx/QXlsx.pri)
+

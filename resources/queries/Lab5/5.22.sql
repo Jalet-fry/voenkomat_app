@@ -12,3 +12,6 @@ JOIN public.voennyi_bilet vb ON vb.id_prizivnika = p.id_prizivnik
 JOIN public.kategoria_godnosti kg ON kg.id_kategorii = vb.id_kategorii
 ORDER BY p.fio;
 
+
+
+

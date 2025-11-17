@@ -1,6 +1,8 @@
+# Temporary text files
+*.txt
+!docs/*.txt
+!resources/**/*.txt
 # Qt build files
-debug/
-release/
 *.pro.user
 *.pro.user.*
 
@@ -55,3 +57,36 @@ Makefile.Debug
 Makefile.Release
 object_script.*
 SystemCheckSessions/
+
+# Build directories
+build/
+debug/
+release/
+
+# Export directories (игнорируем содержимое, но можно добавить .gitkeep если нужно)
+exports/
+!exports/.gitkeep
+
+# Встроенный git репозиторий qxlsx - полностью игнорируем (используется как библиотека)
+qxlsx/
+
+# Временные файлы
+dllme.txt
+ls-files
+*-Name*
+*Select-String*
+*Pattern*
+tatus*
+hell*
+
+# Странные файлы с некорректными именами (экранированные версии)
+"*-Name*"
+"*Select-String*"
+"*Pattern*"
+
+# Markdown файлы (кроме README.md)
+*.md
+!README.md
+!docs/assignment.md
+!docs/LR*_Report.md
+!docs/database_schema.md
