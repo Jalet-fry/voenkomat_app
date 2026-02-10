@@ -1,11 +1,10 @@
--- 2.1.25: Суммарное количество призывников по каждой категории годности
+-- 6.25: Суммарное количество призывников по каждой категории годности
 SELECT
-    kg.nazvanie_kategorii,
-    COUNT(DISTINCT p.id_prizivnik) AS total_prizivniki,
-    COUNT(vb.id_bileta) AS biletov_count
-FROM public.kategoria_godnosti kg
-LEFT JOIN public.voennyi_bilet vb ON vb.id_kategorii = kg.id_kategorii
-LEFT JOIN public.prizivnik p ON p.id_prizivnik = vb.id_prizivnika
-GROUP BY kg.nazvanie_kategorii
-ORDER BY total_prizivniki DESC;
-
+    kg.category_name,
+    COUNT(DISTINCT p.conscript_id) AS total_conscripts,
+    COUNT(vb.ticket_id) AS biletov_count
+FROM public.fitness_categories kg
+LEFT JOIN public.military_id_cards vb ON vb.category_id = kg.category_id
+LEFT JOIN public.conscripts p ON p.conscript_id = vb.conscript_id
+GROUP BY kg.category_name
+ORDER BY total_conscripts DESC;

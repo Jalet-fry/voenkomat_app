@@ -1,21 +1,20 @@
--- 2.1.34: Вывести категории годности, которые используются в военных билетах и присутствуют в медицинских освидетельствованиях
+-- 6.34: Вывести категории годности, которые используются в военных билетах и присутствуют в медицинских освидетельствованиях
 WITH common_ids AS (
-    SELECT id_kategorii
-    FROM public.voennyi_bilet
-    WHERE id_kategorii IS NOT NULL
+    SELECT category_id
+    FROM public.military_id_cards
+    WHERE category_id IS NOT NULL
     
     INTERSECT
     
-    SELECT id_kategorii
-    FROM public.med_osvidetelstvovanie
-    WHERE id_kategorii IS NOT NULL
+    SELECT category_id
+    FROM public.medical_examinations
+    WHERE category_id IS NOT NULL
 )
 SELECT 
-    kg.id_kategorii,
-    kg.nazvanie_kategorii,
-    kg.index_kategorii,
-    CONCAT(kg.nazvanie_kategorii, COALESCE(kg.index_kategorii::text, '')) AS full_category
-FROM public.kategoria_godnosti kg
-JOIN common_ids c ON kg.id_kategorii = c.id_kategorii
-ORDER BY kg.id_kategorii;
-
+    kg.category_id,
+    kg.category_name,
+    kg.category_index,
+    CONCAT(kg.category_name, COALESCE(kg.category_index::text, '')) AS full_category
+FROM public.fitness_categories kg
+JOIN common_ids c ON kg.category_id = c.category_id
+ORDER BY kg.category_id;

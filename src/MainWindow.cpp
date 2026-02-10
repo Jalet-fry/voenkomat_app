@@ -1,7 +1,6 @@
 #include "MainWindow.h"
 #include "TablesWindow.h"
 #include "QueriesWindow.h"
-#include "TableAdditionWindow.h"
 #include "BackupManager.h"
 #include <QMessageBox>
 #include <QFileDialog>
@@ -14,7 +13,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_dbManager(new DatabaseManager(this))
     , m_tablesWindow(nullptr)
     , m_queriesWindow(nullptr)
-    , m_tableAdditionWindow(nullptr)
 {
     setWindowTitle("Военкомат - Главное меню");
     setGeometry(100, 100, 400, 500);
@@ -68,11 +66,6 @@ MainWindow::~MainWindow()
         m_queriesWindow->deleteLater();
         m_queriesWindow = nullptr;
     }
-    if (m_tableAdditionWindow) {
-        m_tableAdditionWindow->close();
-        m_tableAdditionWindow->deleteLater();
-        m_tableAdditionWindow = nullptr;
-    }
 }
 
 void MainWindow::setupUI()
@@ -106,11 +99,6 @@ void MainWindow::setupUI()
     m_tablesBtn->setMinimumHeight(40);
     connect(m_tablesBtn, &QPushButton::clicked, this, &MainWindow::openTablesWindow);
     m_layout->addWidget(m_tablesBtn);
-
-    m_addTableBtn = new QPushButton("Добавить таблицу", this);
-    m_addTableBtn->setMinimumHeight(40);
-    connect(m_addTableBtn, &QPushButton::clicked, this, &MainWindow::openTableAdditionWindow);
-    m_layout->addWidget(m_addTableBtn);
 
     m_exportBtn = new QPushButton("Экспорт данных", this);
     m_exportBtn->setMinimumHeight(40);
@@ -201,17 +189,6 @@ void MainWindow::openTablesWindow()
     m_tablesWindow->raise();
     m_tablesWindow->activateWindow();
     m_tablesWindow->show();
-}
-
-void MainWindow::openTableAdditionWindow()
-{
-    if (!m_tableAdditionWindow) {
-        m_tableAdditionWindow = new TableAdditionWindow(m_dbManager, this);
-        m_tableAdditionWindow->setWindowFlags(Qt::Window);
-    }
-    m_tableAdditionWindow->raise();
-    m_tableAdditionWindow->activateWindow();
-    m_tableAdditionWindow->show();
 }
 
 void MainWindow::exportAllData()

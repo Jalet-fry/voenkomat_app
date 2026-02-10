@@ -1,10 +1,9 @@
--- 2.1.2: Посчитать число призывников по городам и показать только города с 1 призывником
+-- 6.2: Посчитать число призывников по городам и показать только города с 1 призывником
 SELECT
-    TRIM(REPLACE(REPLACE(SPLIT_PART(p.adres_prozhivaniya, ',', 1), 'г.', ''), 'г ', '')) AS city,
-    COUNT(p.id_prizivnik) AS prizivniki_count
-FROM public.prizivnik p
-WHERE p.adres_prozhivaniya IS NOT NULL
-GROUP BY TRIM(REPLACE(REPLACE(SPLIT_PART(p.adres_prozhivaniya, ',', 1), 'г.', ''), 'г ', ''))
-HAVING COUNT(p.id_prizivnik) = 1
-ORDER BY prizivniki_count DESC;
-
+    TRIM(REPLACE(REPLACE(SPLIT_PART(p.residence_address, ',', 1), 'г.', ''), 'г ', '')) AS city,
+    COUNT(p.conscript_id) AS conscripts_count
+FROM public.conscripts p
+WHERE p.residence_address IS NOT NULL
+GROUP BY 1
+HAVING COUNT(p.conscript_id) = 1
+ORDER BY conscripts_count DESC;

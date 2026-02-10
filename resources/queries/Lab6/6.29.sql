@@ -1,14 +1,13 @@
--- 2.1.29: Вывести список категорий годности, которые используются в системе
+-- 6.29: Вывести список категорий годности, которые используются в системе
 SELECT
-    kg.id_kategorii,
-    kg.nazvanie_kategorii,
-    kg.index_kategorii,
-    CONCAT(kg.nazvanie_kategorii, COALESCE(kg.index_kategorii::text, '')) AS full_category,
-    kg.opisanie_ogranichenii,
-    COUNT(vb.id_bileta) AS usage_count
-FROM public.kategoria_godnosti kg
-LEFT JOIN public.voennyi_bilet vb ON vb.id_kategorii = kg.id_kategorii
-GROUP BY kg.id_kategorii, kg.nazvanie_kategorii, kg.index_kategorii, kg.opisanie_ogranichenii
-HAVING COUNT(vb.id_bileta) > 0
+    kg.category_id,
+    kg.category_name,
+    kg.category_index,
+    CONCAT(kg.category_name, COALESCE(kg.category_index::text, '')) AS full_category,
+    kg.restriction_description,
+    COUNT(vb.ticket_id) AS usage_count
+FROM public.fitness_categories kg
+LEFT JOIN public.military_id_cards vb ON vb.category_id = kg.category_id
+GROUP BY kg.category_id, kg.category_name, kg.category_index, kg.restriction_description
+HAVING COUNT(vb.ticket_id) > 0
 ORDER BY usage_count DESC;
-

@@ -11,30 +11,32 @@ SOURCES += \
     src/MainWindow.cpp \
     src/TablesWindow.cpp \
     src/QueriesWindow.cpp \
-    src/TableEditWindow.cpp \
     src/TableViewWindow.cpp \
     src/BackupManager.cpp \
     src/QueryResultWindow.cpp \
-    src/TableAdditionWindow.cpp \
     src/RecordDialog.cpp \
-    src/ConfigManager.cpp
+    src/ConfigManager.cpp \
+    src/CreateTableDialog.cpp \
+    src/EditTableStructureDialog.cpp \
+    src/EmbeddedQueries.cpp
 
 HEADERS += \
     src/DatabaseManager.h \
     src/MainWindow.h \
     src/TablesWindow.h \
     src/QueriesWindow.h \
-    src/TableEditWindow.h \
     src/TableViewWindow.h \
     src/BackupManager.h \
     src/QueryResultWindow.h \
-    src/TableAdditionWindow.h \
     src/RecordDialog.h \
-    src/ConfigManager.h
+    src/ConfigManager.h \
+    src/CreateTableDialog.h \
+    src/EditTableStructureDialog.h \
+    src/EmbeddedQueries.h \
+    src/DbConstants.h
 
 RESOURCES +=
 
-# Определение выходной директории
 win32 {
     CONFIG(debug, debug|release) {
         DESTDIR = $$PWD/debug
@@ -43,12 +45,5 @@ win32 {
     }
 }
 
-# Путь к ресурсам (относительно директории проекта)
-# Приложение будет искать ресурсы в нескольких местах:
-# 1. В директории приложения (для релизных сборок)
-# 2. В директории проекта (для разработки)
 RESOURCES_PATH = $$PWD/resources
-
-# Подключение QXlsx для экспорта в Excel
 include(qxlsx/QXlsx/QXlsx.pri)
-

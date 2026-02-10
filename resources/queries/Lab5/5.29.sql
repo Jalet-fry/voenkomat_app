@@ -1,10 +1,9 @@
--- Запрос 5.29: Вывести список категорий годности, которые используются в системе
+-- 5.29: Вывести список категорий годности, которые используются в системе
 SELECT 
-    kg.nazvanie_kategorii,
-    COUNT(vb.id_bileta) AS total_prizivniki,
-    COUNT(DISTINCT vb.id_prizivnika) AS unique_prizivniki
-FROM public.kategoria_godnosti kg
-LEFT JOIN public.voennyi_bilet vb ON vb.id_kategorii = kg.id_kategorii
-GROUP BY kg.nazvanie_kategorii
-ORDER BY total_prizivniki DESC;
-
+    kg.category_name,
+    COUNT(vb.ticket_id) AS total_conscripts,
+    COUNT(DISTINCT vb.conscript_id) AS unique_conscripts
+FROM public.fitness_categories kg
+LEFT JOIN public.military_id_cards vb ON vb.category_id = kg.category_id
+GROUP BY kg.category_name
+ORDER BY total_conscripts DESC;

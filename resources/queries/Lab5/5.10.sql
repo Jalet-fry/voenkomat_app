@@ -1,11 +1,10 @@
--- Запрос 5.10: Список комиссаров с количеством призывников в каждом (включая комиссаров без призывников)
+-- Запрос 5.10: Список комиссаров с количеством призывников в каждом
 SELECT 
-    c.id_comissar,
-    c.fio,
-    c.dolzhnost,
-    COUNT(pc.id_prizivnik) AS prizivniki_count
-FROM public.comissar c
-LEFT JOIN public.prizivnik_comissar pc ON pc.id_comissar = c.id_comissar
-GROUP BY c.id_comissar, c.fio, c.dolzhnost
+    c.commissioner_id,
+    c.full_name,
+    c.position,
+    COUNT(pc.conscript_id) AS prizivniki_count
+FROM public.commissioners c
+LEFT JOIN public.conscripts_commissioners pc ON pc.commissioner_id = c.commissioner_id
+GROUP BY c.commissioner_id, c.full_name, c.position
 ORDER BY prizivniki_count DESC;
-

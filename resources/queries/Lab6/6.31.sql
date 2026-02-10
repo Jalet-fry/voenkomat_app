@@ -1,9 +1,8 @@
--- 2.1.31: Объединить ФИО всех участников системы (призывников и комиссаров), без дублей
-SELECT fio AS participant_name
-FROM public.prizivnik
+-- 6.31: Объединить ФИО всех участников системы (призывников и комиссаров), без дублей
+SELECT full_name AS participant_name
+FROM public.conscripts
 UNION
-SELECT fio AS participant_name
-FROM public.comissar
+SELECT full_name AS participant_name
+FROM public.commissioners
 ORDER BY participant_name
 LIMIT 10;
-

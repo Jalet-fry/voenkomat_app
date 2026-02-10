@@ -1,8 +1,7 @@
--- Запрос 5.20: Посчитать количество медицинских освидетельствований по каждому врачу
+-- 5.20: Посчитать количество медицинских освидетельствований по каждому врачу
 SELECT 
-    fio_vracha,
-    COUNT(*) AS osvidetelstvovaniya_count
-FROM public.med_osvidetelstvovanie
-GROUP BY fio_vracha
-ORDER BY osvidetelstvovaniya_count DESC;
-
+    doctor_full_name,
+    COUNT(*) AS examinations_count
+FROM public.medical_examinations
+GROUP BY doctor_full_name
+ORDER BY examinations_count DESC;

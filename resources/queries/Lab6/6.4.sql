@@ -1,13 +1,12 @@
--- 2.1.4: Показать призывников с их военными билетами (номер билета, воинское звание, категория)
+-- 6.4: Показать призывников с их военными билетами (номер билета, воинское звание, категория)
 SELECT
-    p.id_prizivnik,
-    p.fio,
-    p.data_rozhdeniya,
-    vb.nomer_bileta,
-    vb.voinskoe_zvanie,
-    vb.kategoria,
-    vb.data_vydachi
-FROM public.prizivnik p
-LEFT JOIN public.voennyi_bilet vb ON vb.id_prizivnika = p.id_prizivnik
-ORDER BY p.fio;
-
+    p.conscript_id,
+    p.full_name,
+    p.birth_date,
+    vb.ticket_number,
+    vb.military_rank,
+    vb.category,
+    vb.issue_date
+FROM public.conscripts p
+LEFT JOIN public.military_id_cards vb ON vb.conscript_id = p.conscript_id
+ORDER BY p.full_name;

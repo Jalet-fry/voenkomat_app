@@ -1,15 +1,14 @@
--- 2.1.19: Вывести медицинские освидетельствования с именем призывника и категорией годности
+-- 6.19: Вывести медицинские освидетельствования с именем призывника и категорией годности
 SELECT
-    mo.id_osvidetelstvovania,
-    mo.data_provedeniya,
-    mo.fio_vracha,
-    mo.zaklyuchenie,
-    p.fio AS prizivnik_name,
-    kg.nazvanie_kategorii,
-    kg.index_kategorii,
-    CONCAT(kg.nazvanie_kategorii, COALESCE(kg.index_kategorii::text, '')) AS full_category
-FROM public.med_osvidetelstvovanie mo
-LEFT JOIN public.prizivnik p ON p.id_prizivnik = mo.id_prizivnika
-LEFT JOIN public.kategoria_godnosti kg ON kg.id_kategorii = mo.id_kategorii
-ORDER BY mo.data_provedeniya DESC;
-
+    mo.certification_id,
+    mo.examination_date,
+    mo.doctor_full_name,
+    mo.conclusion,
+    p.full_name AS conscript_name,
+    kg.category_name,
+    kg.category_index,
+    CONCAT(kg.category_name, COALESCE(kg.category_index::text, '')) AS full_category
+FROM public.medical_examinations mo
+LEFT JOIN public.conscripts p ON p.conscript_id = mo.conscript_id
+LEFT JOIN public.fitness_categories kg ON kg.category_id = mo.category_id
+ORDER BY mo.examination_date DESC;

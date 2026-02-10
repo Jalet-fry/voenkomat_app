@@ -1,6 +1,7 @@
 #include "TableViewWindow.h"
 #include "RecordDialog.h"
 #include "BackupManager.h"
+#include "DbConstants.h"
 #include <QLabel>
 #include <QMessageBox>
 #include <QHeaderView>
@@ -12,6 +13,15 @@
 #include <QFile>
 #include <QDir>
 #include <QDateTime>
+#include <QLineEdit>
+#include <QDateEdit>
+#include <QDateTimeEdit>
+#include <QComboBox>
+#include <QScrollArea>
+#include <QGridLayout>
+#include <QRegExpValidator>
+#include <QIntValidator>
+#include <QDoubleValidator>
 #include "xlsxdocument.h"
 #include "xlsxformat.h"
 using namespace QXlsx;
@@ -20,50 +30,90 @@ TableViewWindow::TableViewWindow(DatabaseManager *dbManager, const QString &tabl
     : QWidget(parent)
     , m_dbManager(dbManager)
     , m_tableName(tableName)
+    , m_editBtn(nullptr)
+    , m_deleteBtn(nullptr)
+    , m_filterScrollArea(nullptr)
+    , m_filterWidget(nullptr)
+    , m_filterLayout(nullptr)
+    , m_clearFiltersBtn(nullptr)
+    , m_filterTimer(nullptr)
+    , m_filterStatusLabel(nullptr)
 {
     setWindowTitle(m_tableName);
     setGeometry(100, 100, 800, 600);
     
+    using namespace Db;
+
     // Инициализация русских названий полей
-    m_fieldDisplayNames["id_prizivnik"] = "ID призывника";
-    m_fieldDisplayNames["fio"] = "ФИО";
-    m_fieldDisplayNames["data_rozhdeniya"] = "Дата рождения";
-    m_fieldDisplayNames["adres_prozhivaniya"] = "Адрес проживания";
-    m_fieldDisplayNames["nomer_pasporta"] = "Номер паспорта";
-    m_fieldDisplayNames["id_comissar"] = "ID комиссара";
-    m_fieldDisplayNames["dolzhnost"] = "Должность";
-    m_fieldDisplayNames["stazh_raboty"] = "Стаж работы";
-    m_fieldDisplayNames["kontaktnyi_telefon"] = "Контактный телефон";
-    m_fieldDisplayNames["id_kategorii"] = "ID категории";
-    m_fieldDisplayNames["nazvanie_kategorii"] = "Название категории";
-    m_fieldDisplayNames["opisanie_ogranichenii"] = "Описание ограничений";
-    m_fieldDisplayNames["index_kategorii"] = "Индекс категории";
-    m_fieldDisplayNames["osnovanie_dlya_kategorii"] = "Основание для категории";
-    m_fieldDisplayNames["id_osvidetelstvovania"] = "ID освидетельствования";
-    m_fieldDisplayNames["data_provedeniya"] = "Дата проведения";
-    m_fieldDisplayNames["rezultaty_obsledovania"] = "Результаты обследования";
-    m_fieldDisplayNames["fio_vracha"] = "ФИО врача";
-    m_fieldDisplayNames["zaklyuchenie"] = "Заключение";
-    m_fieldDisplayNames["id_prizivnika"] = "ID призывника";
-    m_fieldDisplayNames["id_bileta"] = "ID билета";
-    m_fieldDisplayNames["nomer_bileta"] = "Номер билета";
-    m_fieldDisplayNames["data_vydachi"] = "Дата выдачи";
-    m_fieldDisplayNames["voinskoe_zvanie"] = "Воинское звание";
-    m_fieldDisplayNames["kategoria"] = "Категория";
-    m_fieldDisplayNames["id_karty"] = "ID карты";
-    m_fieldDisplayNames["nomer_karty"] = "Номер карты";
-    m_fieldDisplayNames["data_postanovki_na_uchet"] = "Дата постановки на учёт";
-    m_fieldDisplayNames["istoriya_otsrochek"] = "История отсрочек";
-    m_fieldDisplayNames["voenno_uchetnaya_specialnost"] = "Военно-учётная специальность";
-    m_fieldDisplayNames["id_meropriyatiya"] = "ID мероприятия";
-    m_fieldDisplayNames["tip_meropriyatiya"] = "Тип мероприятия";
-    m_fieldDisplayNames["data_provedeniya"] = "Дата проведения";
-    m_fieldDisplayNames["mesto_provedeniya"] = "Место проведения";
-    m_fieldDisplayNames["fio_comissara"] = "ФИО комиссара";
-    m_fieldDisplayNames["data_vzaimodeistviya"] = "Дата взаимодействия";
-    m_fieldDisplayNames["nomer_kabineta"] = "Номер кабинета";
+    // Conscripts
+    m_fieldDisplayNames[Conscripts::CONSCRIPT_ID] = "ID призывника";
+    m_fieldDisplayNames[Conscripts::FULL_NAME] = "ФИО";
+    m_fieldDisplayNames[Conscripts::BIRTH_DATE] = "Дата рождения";
+    m_fieldDisplayNames[Conscripts::RESIDENCE_ADDRESS] = "Адрес проживания";
+    m_fieldDisplayNames[Conscripts::PASSPORT_NUMBER] = "Номер паспорта";
+    m_fieldDisplayNames[Conscripts::MILITARY_TICKET_ID] = "ID военного билета";
+    m_fieldDisplayNames[Conscripts::REGISTRATION_CARD_ID] = "ID учётной карты";
+
+    // Commissioners
+    m_fieldDisplayNames[Commissioners::COMMISSIONER_ID] = "ID комиссара";
+    m_fieldDisplayNames[Commissioners::FULL_NAME] = "ФИО комиссара";
+    m_fieldDisplayNames[Commissioners::POSITION] = "Должность";
+    m_fieldDisplayNames[Commissioners::YEARS_OF_SERVICE] = "Стаж работы";
+    m_fieldDisplayNames[Commissioners::PHONE_NUMBER] = "Контактный телефон";
+
+    // Fitness Categories
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_ID] = "ID категории";
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_NAME] = "Название категории";
+    m_fieldDisplayNames[FitnessCategories::RESTRICTION_DESCRIPTION] = "Описание ограничений";
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_INDEX] = "Индекс категории";
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_BASIS] = "Основание для категории";
+
+    // Medical Examinations
+    m_fieldDisplayNames[MedicalExaminations::CERTIFICATION_ID] = "ID освидетельствования";
+    m_fieldDisplayNames[MedicalExaminations::EXAMINATION_DATE] = "Дата проведения";
+    m_fieldDisplayNames[MedicalExaminations::EXAMINATION_RESULTS] = "Результаты обследования";
+    m_fieldDisplayNames[MedicalExaminations::DOCTOR_FULL_NAME] = "ФИО врача";
+    m_fieldDisplayNames[MedicalExaminations::CONCLUSION] = "Заключение";
+
+    // Military Id Cards
+    m_fieldDisplayNames[MilitaryIdCards::TICKET_ID] = "ID билета";
+    m_fieldDisplayNames[MilitaryIdCards::TICKET_NUMBER] = "Номер билета";
+    m_fieldDisplayNames[MilitaryIdCards::ISSUE_DATE] = "Дата выдачи";
+    m_fieldDisplayNames[MilitaryIdCards::MILITARY_RANK] = "Воинское звание";
+    m_fieldDisplayNames[MilitaryIdCards::CATEGORY] = "Категория";
+
+    // Service Record Cards
+    m_fieldDisplayNames[ServiceRecordCards::CARD_ID] = "ID карты";
+    m_fieldDisplayNames[ServiceRecordCards::CARD_NUMBER] = "Номер карты";
+    m_fieldDisplayNames[ServiceRecordCards::REGISTRATION_DATE] = "Дата постановки на учёт";
+    m_fieldDisplayNames[ServiceRecordCards::DEFERMENT_HISTORY] = "История отсрочек";
+    m_fieldDisplayNames[ServiceRecordCards::MILITARY_SPECIALTY] = "Военно-учётная специальность";
+
+    // Callup Events
+    m_fieldDisplayNames[CallupEvents::EVENT_ID] = "ID мероприятия";
+    m_fieldDisplayNames[CallupEvents::EVENT_TYPE] = "Тип мероприятия";
+    m_fieldDisplayNames[CallupEvents::EVENT_DATETIME] = "Дата и время";
+    m_fieldDisplayNames[CallupEvents::EVENT_LOCATION] = "Место проведения";
+    m_fieldDisplayNames[CallupEvents::COMMISSIONER_FULL_NAME] = "ФИО комиссара";
+
+    // Common/Relations
+    m_fieldDisplayNames["id_prizivnika"] = "ID призывника"; // В некоторых местах может остаться старое имя в БД (внешние ключи)
+    m_fieldDisplayNames[ConscriptsCommissioners::INTERACTION_DATE] = "Дата взаимодействия";
+    m_fieldDisplayNames[ConscriptsCommissioners::OFFICE_NUMBER] = "Номер кабинета";
+    
+    // Получаем информацию о колонках
+    if (m_dbManager && m_dbManager->isConnected()) {
+        m_columnDetails = m_dbManager->getColumnDetails(m_tableName);
+    }
+    
+    // Инициализация таймера для debounce фильтров
+    m_filterTimer = new QTimer(this);
+    m_filterTimer->setSingleShot(true);
+    m_filterTimer->setInterval(500); // 500ms задержка
+    connect(m_filterTimer, &QTimer::timeout, this, &TableViewWindow::applyFilters);
     
     setupUI();
+    setupFilters();
     setupStyles();
     loadData();
 }
@@ -84,12 +134,18 @@ void TableViewWindow::setupUI()
     title->setStyleSheet("font-size: 18px; color: #333; font-weight: bold;");
     m_layout->addWidget(title);
 
+    // Метка статуса фильтров (будет заполнена в setupFilters)
+    m_filterStatusLabel = new QLabel("", this);
+    m_filterStatusLabel->setStyleSheet("color: #666; font-size: 12px;");
+    m_layout->addWidget(m_filterStatusLabel);
+
     // Таблица
     m_table = new QTableWidget(this);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QTableWidget::customContextMenuRequested, this, &TableViewWindow::showContextMenu);
+    connect(m_table, &QTableWidget::itemSelectionChanged, this, &TableViewWindow::updateButtonStates);
     m_layout->addWidget(m_table);
 
     // Кнопки
@@ -99,6 +155,18 @@ void TableViewWindow::setupUI()
     addBtn->setMinimumHeight(40);
     connect(addBtn, &QPushButton::clicked, this, &TableViewWindow::addRecord);
     btnLayout->addWidget(addBtn);
+    
+    m_editBtn = new QPushButton("Изменить", this);
+    m_editBtn->setMinimumHeight(40);
+    m_editBtn->setEnabled(false);
+    connect(m_editBtn, &QPushButton::clicked, this, &TableViewWindow::editRecord);
+    btnLayout->addWidget(m_editBtn);
+    
+    m_deleteBtn = new QPushButton("Удалить", this);
+    m_deleteBtn->setMinimumHeight(40);
+    m_deleteBtn->setEnabled(false);
+    connect(m_deleteBtn, &QPushButton::clicked, this, &TableViewWindow::deleteRecord);
+    btnLayout->addWidget(m_deleteBtn);
     
     QPushButton *exportCsvBtn = new QPushButton("Экспорт в CSV", this);
     exportCsvBtn->setMinimumHeight(40);
@@ -144,17 +212,185 @@ void TableViewWindow::setupStyles()
         "}"
         "QPushButton:hover { background-color: #00fac1; }"
         "QPushButton:pressed { background-color: #00c79a; }"
+        "QPushButton:disabled { background-color: #cccccc; color: #666666; }"
     );
+    
+    // Специальные стили для кнопки удаления
+    if (m_deleteBtn) {
+        m_deleteBtn->setStyleSheet(
+            "QPushButton {"
+            "    background-color: #ff6b6b;"
+            "    font-size: 16px;"
+            "    padding: 10px;"
+            "    border-radius: 8px;"
+            "    color: white;"
+            "    border: none;"
+            "    min-height: 40px;"
+            "}"
+            "QPushButton:hover { background-color: #ff5252; }"
+            "QPushButton:pressed { background-color: #e53935; }"
+            "QPushButton:disabled { background-color: #cccccc; color: #666666; }"
+        );
+    }
 }
 
-void TableViewWindow::loadData()
+void TableViewWindow::setupFilters()
+{
+    if (m_columnDetails.isEmpty()) {
+        return;
+    }
+
+    // Создаем ScrollArea для панели фильтров
+    m_filterScrollArea = new QScrollArea(this);
+    m_filterScrollArea->setWidgetResizable(true);
+    m_filterScrollArea->setMaximumHeight(200);
+    m_filterScrollArea->setStyleSheet(
+        "QScrollArea { border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9; }"
+    );
+
+    // Создаем виджет для фильтров
+    m_filterWidget = new QWidget();
+    m_filterLayout = new QGridLayout(m_filterWidget);
+    m_filterLayout->setSpacing(10);
+    m_filterLayout->setContentsMargins(10, 10, 10, 10);
+
+    int row = 0;
+    int col = 0;
+    const int colsPerRow = 3; // 3 колонки фильтров в ряд
+
+    foreach (const DatabaseManager::ColumnDetail &column, m_columnDetails) {
+        QString columnName = column.columnName;
+        QString dataType = column.dataType.toUpper();
+        QString displayName = getDisplayName(columnName);
+
+        // Создаем метку
+        QLabel *label = new QLabel(displayName + ":", m_filterWidget);
+        label->setStyleSheet("font-weight: bold; color: #333;");
+        m_filterLayout->addWidget(label, row, col * 2);
+
+        // Создаем виджет фильтра в зависимости от типа данных
+        QWidget *filterWidget = nullptr;
+
+        if (dataType.contains("INT", Qt::CaseInsensitive) || 
+            dataType == "BIGINT" || dataType == "SMALLINT") {
+            // Целочисленные типы
+            QLineEdit *lineEdit = new QLineEdit(m_filterWidget);
+            lineEdit->setPlaceholderText("Число");
+            lineEdit->setValidator(new QIntValidator(lineEdit));
+            connect(lineEdit, &QLineEdit::textChanged, this, &TableViewWindow::onFilterChanged);
+            filterWidget = lineEdit;
+        }
+        else if (dataType.contains("NUMERIC", Qt::CaseInsensitive) || 
+                 dataType.contains("DECIMAL", Qt::CaseInsensitive) ||
+                 dataType.contains("FLOAT", Qt::CaseInsensitive) ||
+                 dataType.contains("REAL", Qt::CaseInsensitive) ||
+                 dataType.contains("DOUBLE", Qt::CaseInsensitive)) {
+            // Числовые типы с плавающей точкой
+            QLineEdit *lineEdit = new QLineEdit(m_filterWidget);
+            lineEdit->setPlaceholderText("Число");
+            lineEdit->setValidator(new QDoubleValidator(lineEdit));
+            connect(lineEdit, &QLineEdit::textChanged, this, &TableViewWindow::onFilterChanged);
+            filterWidget = lineEdit;
+        }
+        else if (dataType == "DATE") {
+            // Дата
+            QDateEdit *dateEdit = new QDateEdit(m_filterWidget);
+            dateEdit->setCalendarPopup(true);
+            dateEdit->setMinimumDate(QDate(1900, 1, 1));
+            dateEdit->setMaximumDate(QDate(2100, 12, 31));
+            dateEdit->setDisplayFormat("yyyy-MM-dd");
+            dateEdit->setSpecialValueText(""); // Пустое значение
+            dateEdit->setDate(QDate(2000, 1, 1)); // Устанавливаем специальное значение (пустое)
+            connect(dateEdit, &QDateEdit::dateChanged, this, &TableViewWindow::onFilterChanged);
+            filterWidget = dateEdit;
+        }
+        else if (dataType.contains("TIMESTAMP", Qt::CaseInsensitive) ||
+                 dataType.contains("TIME", Qt::CaseInsensitive)) {
+            // Дата и время
+            QDateTimeEdit *dateTimeEdit = new QDateTimeEdit(m_filterWidget);
+            dateTimeEdit->setCalendarPopup(true);
+            dateTimeEdit->setDateTime(QDateTime::currentDateTime());
+            dateTimeEdit->setDisplayFormat("yyyy-MM-dd HH:mm:ss");
+            connect(dateTimeEdit, &QDateTimeEdit::dateTimeChanged, this, &TableViewWindow::onFilterChanged);
+            filterWidget = dateTimeEdit;
+        }
+        else if (dataType == "BOOLEAN" || dataType == "BOOL") {
+            // Логический тип
+            QComboBox *combo = new QComboBox(m_filterWidget);
+            combo->addItem("", QVariant());
+            combo->addItem("Да", true);
+            combo->addItem("Нет", false);
+            connect(combo, SIGNAL(currentIndexChanged(int)), this, SLOT(onFilterChanged()));
+            filterWidget = combo;
+        }
+        else {
+            // Текстовые типы (VARCHAR, TEXT, CHAR и т.д.)
+            QLineEdit *lineEdit = new QLineEdit(m_filterWidget);
+            lineEdit->setPlaceholderText("Текст");
+            connect(lineEdit, &QLineEdit::textChanged, this, &TableViewWindow::onFilterChanged);
+            filterWidget = lineEdit;
+        }
+
+        if (filterWidget) {
+            filterWidget->setObjectName(columnName); // Сохраняем имя колонки
+            m_filterLayout->addWidget(filterWidget, row, col * 2 + 1);
+            m_filterWidgets[columnName] = filterWidget;
+        }
+
+        col++;
+        if (col >= colsPerRow) {
+            col = 0;
+            row++;
+        }
+    }
+
+    // Добавляем кнопку "Сбросить фильтры"
+    row++;
+    m_clearFiltersBtn = new QPushButton("Сбросить фильтры", m_filterWidget);
+    m_clearFiltersBtn->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #ff9800;"
+        "    color: white;"
+        "    padding: 8px 15px;"
+        "    border-radius: 5px;"
+        "    font-weight: bold;"
+        "}"
+        "QPushButton:hover { background-color: #f57c00; }"
+        "QPushButton:pressed { background-color: #e65100; }"
+    );
+    connect(m_clearFiltersBtn, &QPushButton::clicked, this, &TableViewWindow::clearFilters);
+    m_filterLayout->addWidget(m_clearFiltersBtn, row, 0, 1, colsPerRow * 2);
+
+    m_filterWidget->setLayout(m_filterLayout);
+    m_filterScrollArea->setWidget(m_filterWidget);
+
+    // Вставляем панель фильтров перед таблицей
+    int tableIndex = m_layout->indexOf(m_table);
+    m_layout->insertWidget(tableIndex, m_filterScrollArea);
+}
+
+void TableViewWindow::loadData(const QString &filterClause, const QList<QVariant> &filterParams)
 {
     if (!m_dbManager || !m_dbManager->isConnected()) {
         return;
     }
 
-    bool ok;
-    QSqlQuery query = m_dbManager->executeQuery(QString("SELECT * FROM %1").arg(m_tableName), &ok);
+    // Формируем SQL запрос
+    QString sql = QString("SELECT * FROM %1").arg(DatabaseManager::escapeIdentifier(m_tableName));
+    if (!filterClause.isEmpty()) {
+        sql += " WHERE " + filterClause;
+    }
+    sql += " ORDER BY 1 ASC";
+
+    // Используем параметризованный запрос
+    QSqlQuery query = m_dbManager->prepareQuery(sql);
+    
+    // Привязываем параметры по именам
+    for (int i = 0; i < filterParams.size(); ++i) {
+        query.bindValue(QString(":param%1").arg(i), filterParams[i]);
+    }
+
+    bool ok = m_dbManager->executePreparedQuery(query);
     
     if (!ok) {
         QMessageBox::critical(this, "Ошибка", "Не удалось загрузить данные:\n" + m_dbManager->lastError());
@@ -173,12 +409,14 @@ void TableViewWindow::loadData()
 
     // Получаем данные
     QList<QList<QVariant>> rows;
+    int rowCount = 0;
     while (query.next()) {
         QList<QVariant> row;
         for (int i = 0; i < columns.size(); ++i) {
             row << query.value(i);
         }
         rows << row;
+        rowCount++;
     }
 
     m_table->setRowCount(rows.size());
@@ -191,6 +429,190 @@ void TableViewWindow::loadData()
     }
 
     m_table->resizeColumnsToContents();
+    updateButtonStates();
+    
+    // Обновляем статус фильтров
+    if (!filterClause.isEmpty()) {
+        m_filterStatusLabel->setText(QString("Найдено записей: %1 (применены фильтры)").arg(rowCount));
+        m_filterStatusLabel->setStyleSheet("color: #2196F3; font-size: 12px; font-weight: bold;");
+    } else {
+        m_filterStatusLabel->setText(QString("Всего записей: %1").arg(rowCount));
+        m_filterStatusLabel->setStyleSheet("color: #666; font-size: 12px;");
+    }
+}
+
+QString TableViewWindow::escapeLikePattern(const QString &text) const
+{
+    // Экранируем специальные символы для LIKE: % и _
+    QString escaped = text;
+    escaped.replace("\\", "\\\\"); // Сначала экранируем обратный слэш
+    escaped.replace("%", "\\%");
+    escaped.replace("_", "\\_");
+    return escaped;
+}
+
+void TableViewWindow::buildFilterQuery(QString &whereClause, QList<QVariant> &params)
+{
+    whereClause.clear();
+    params.clear();
+    
+    QStringList conditions;
+    int paramIndex = 0;
+    
+    foreach (const DatabaseManager::ColumnDetail &column, m_columnDetails) {
+        QString columnName = column.columnName;
+        QString dataType = column.dataType.toUpper();
+        
+        QWidget *filterWidget = m_filterWidgets.value(columnName);
+        if (!filterWidget) {
+            continue;
+        }
+        
+        QVariant filterValue;
+        bool hasValue = false;
+        
+        // Получаем значение в зависимости от типа виджета
+        if (QLineEdit *lineEdit = qobject_cast<QLineEdit*>(filterWidget)) {
+            QString text = lineEdit->text().trimmed();
+            if (!text.isEmpty()) {
+                if (dataType.contains("INT", Qt::CaseInsensitive) || 
+                    dataType == "BIGINT" || dataType == "SMALLINT") {
+                    bool ok;
+                    int intValue = text.toInt(&ok);
+                    if (ok) {
+                        filterValue = intValue;
+                        hasValue = true;
+                    }
+                }
+                else if (dataType.contains("NUMERIC", Qt::CaseInsensitive) || 
+                         dataType.contains("DECIMAL", Qt::CaseInsensitive) ||
+                         dataType.contains("FLOAT", Qt::CaseInsensitive) ||
+                         dataType.contains("REAL", Qt::CaseInsensitive) ||
+                         dataType.contains("DOUBLE", Qt::CaseInsensitive)) {
+                    bool ok;
+                    double doubleValue = text.toDouble(&ok);
+                    if (ok) {
+                        filterValue = doubleValue;
+                        hasValue = true;
+                    }
+                }
+                else {
+                    // Текстовые типы - используем LIKE
+                    filterValue = escapeLikePattern(text);
+                    hasValue = true;
+                }
+            }
+        }
+        else if (QDateEdit *dateEdit = qobject_cast<QDateEdit*>(filterWidget)) {
+            QDate date = dateEdit->date();
+            // Проверяем, что дата не является специальным значением (пустым)
+            if (date.isValid() && date != QDate(2000, 1, 1)) {
+                filterValue = date;
+                hasValue = true;
+            }
+        }
+        else if (QDateTimeEdit *dateTimeEdit = qobject_cast<QDateTimeEdit*>(filterWidget)) {
+            QDateTime dateTime = dateTimeEdit->dateTime();
+            if (dateTime.isValid()) {
+                filterValue = dateTime;
+                hasValue = true;
+            }
+        }
+        else if (QComboBox *combo = qobject_cast<QComboBox*>(filterWidget)) {
+            if (combo->currentIndex() > 0) { // Индекс 0 - пустое значение
+                filterValue = combo->currentData();
+                hasValue = true;
+            }
+        }
+        
+        if (hasValue) {
+            QString escapedColumnName = DatabaseManager::escapeIdentifier(columnName);
+            
+            if (dataType.contains("INT", Qt::CaseInsensitive) || 
+                dataType == "BIGINT" || dataType == "SMALLINT" ||
+                dataType.contains("NUMERIC", Qt::CaseInsensitive) || 
+                dataType.contains("DECIMAL", Qt::CaseInsensitive) ||
+                dataType.contains("FLOAT", Qt::CaseInsensitive) ||
+                dataType.contains("REAL", Qt::CaseInsensitive) ||
+                dataType.contains("DOUBLE", Qt::CaseInsensitive) ||
+                dataType == "BOOLEAN" || dataType == "BOOL") {
+                // Точное сравнение для числовых и булевых типов
+                conditions << QString("%1 = :param%2").arg(escapedColumnName).arg(paramIndex);
+                params << filterValue;
+                paramIndex++;
+            }
+            else if (dataType == "DATE") {
+                conditions << QString("%1 = :param%2").arg(escapedColumnName).arg(paramIndex);
+                params << filterValue;
+                paramIndex++;
+            }
+            else if (dataType.contains("TIMESTAMP", Qt::CaseInsensitive) ||
+                     dataType.contains("TIME", Qt::CaseInsensitive)) {
+                conditions << QString("%1 = :param%2").arg(escapedColumnName).arg(paramIndex);
+                params << filterValue;
+                paramIndex++;
+            }
+            else {
+                // LIKE для текстовых типов
+                conditions << QString("%1 LIKE :param%2").arg(escapedColumnName).arg(paramIndex);
+                params << QString("%%1%").arg(filterValue.toString()); // Добавляем % для поиска подстроки
+                paramIndex++;
+            }
+        }
+    }
+    
+    if (!conditions.isEmpty()) {
+        whereClause = conditions.join(" AND ");
+    }
+}
+
+void TableViewWindow::onFilterChanged()
+{
+    // Запускаем таймер для debounce - применяем фильтры через 500ms после последнего изменения
+    m_filterTimer->stop();
+    m_filterTimer->start();
+}
+
+void TableViewWindow::applyFilters()
+{
+    QString whereClause;
+    QList<QVariant> params;
+    
+    buildFilterQuery(whereClause, params);
+    loadData(whereClause, params);
+}
+
+void TableViewWindow::clearFilters()
+{
+    // Очищаем все виджеты фильтров
+    foreach (QWidget *widget, m_filterWidgets.values()) {
+        if (QLineEdit *lineEdit = qobject_cast<QLineEdit*>(widget)) {
+            lineEdit->clear();
+        }
+        else if (QDateEdit *dateEdit = qobject_cast<QDateEdit*>(widget)) {
+            dateEdit->setDate(QDate(2000, 1, 1)); // Устанавливаем специальное значение (пустое)
+        }
+        else if (QDateTimeEdit *dateTimeEdit = qobject_cast<QDateTimeEdit*>(widget)) {
+            dateTimeEdit->setDateTime(QDateTime::currentDateTime());
+        }
+        else if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+            combo->setCurrentIndex(0); // Пустое значение
+        }
+    }
+    
+    // Загружаем данные без фильтров
+    loadData();
+}
+
+void TableViewWindow::updateButtonStates()
+{
+    bool hasSelection = m_table->currentRow() >= 0;
+    if (m_editBtn) {
+        m_editBtn->setEnabled(hasSelection);
+    }
+    if (m_deleteBtn) {
+        m_deleteBtn->setEnabled(hasSelection);
+    }
 }
 
 QString TableViewWindow::getDisplayName(const QString &fieldName) const
@@ -298,15 +720,27 @@ void TableViewWindow::deleteRecord()
             break;
         }
         
-        whereClauses << QString("%1 = :%2").arg(pkColumn).arg(pkColumn);
+        whereClauses << QString("%1 = :%2").arg(DatabaseManager::escapeIdentifier(pkColumn)).arg(pkColumn);
     }
     
     if (!allFound) {
         return;
     }
 
-    int ret = QMessageBox::question(this, "Удаление",
-        "Вы уверены, что хотите удалить эту запись?",
+    // Получаем информацию о записи для отображения в подтверждении
+    QString recordInfo;
+    if (!primaryKeys.isEmpty() && primaryKeys.size() == 1) {
+        int pkIndex = columns.indexOf(primaryKeys.first());
+        if (pkIndex >= 0) {
+            QTableWidgetItem *pkItem = m_table->item(row, pkIndex);
+            if (pkItem) {
+                recordInfo = QString("\n\nID записи: %1").arg(pkItem->text());
+            }
+        }
+    }
+    
+    int ret = QMessageBox::question(this, "Подтверждение удаления",
+        QString("Вы уверены, что хотите удалить эту запись из таблицы '%1'?%2").arg(m_tableName).arg(recordInfo),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 
     if (ret == QMessageBox::Yes) {
@@ -317,7 +751,7 @@ void TableViewWindow::deleteRecord()
         }
 
         // Формируем WHERE clause для составного ключа
-        QString sql = QString("DELETE FROM %1 WHERE %2").arg(m_tableName).arg(whereClauses.join(" AND "));
+        QString sql = QString("DELETE FROM %1 WHERE %2").arg(DatabaseManager::escapeIdentifier(m_tableName)).arg(whereClauses.join(" AND "));
         QSqlQuery query = m_dbManager->prepareQuery(sql);
         
         // Привязываем значения
@@ -332,14 +766,23 @@ void TableViewWindow::deleteRecord()
 
         if (success) {
             if (m_dbManager->commitTransaction()) {
-                QMessageBox::information(this, "Успех", "Запись удалена");
+                QMessageBox::information(this, "Успех", QString("Запись успешно удалена из таблицы '%1'").arg(m_tableName));
                 loadData();
             } else {
                 QMessageBox::critical(this, "Ошибка", "Не удалось зафиксировать транзакцию:\n" + m_dbManager->lastError());
                 m_dbManager->rollbackTransaction();
             }
         } else {
-            QMessageBox::critical(this, "Ошибка", "Не удалось удалить запись:\n" + m_dbManager->lastError());
+            QString errorMsg = m_dbManager->lastError();
+            // Проверяем, не связана ли запись с другими записями
+            if (errorMsg.contains("foreign key", Qt::CaseInsensitive) || 
+                errorMsg.contains("нарушает ограничение внешнего ключа", Qt::CaseInsensitive)) {
+                QMessageBox::warning(this, "Ошибка удаления", 
+                    "Не удалось удалить запись, так как она связана с другими записями в базе данных.\n\n"
+                    "Сначала удалите связанные записи.");
+            } else {
+                QMessageBox::critical(this, "Ошибка", "Не удалось удалить запись:\n" + errorMsg);
+            }
             m_dbManager->rollbackTransaction();
         }
     }

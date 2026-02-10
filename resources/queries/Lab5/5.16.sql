@@ -1,11 +1,5 @@
--- Запрос 5.16: Топ-5 призывных мероприятий по дате проведения
-SELECT 
-    id_meropriyatiya,
-    tip_meropriyatiya,
-    data_provedeniya,
-    mesto_provedeniya,
-    fio_comissara
-FROM public.prizivnoe_meropriyatie
-ORDER BY data_provedeniya DESC
+-- 5.16: Топ-5 призывных мероприятий по дате проведения
+SELECT event_id, event_type, event_datetime, event_location, commissioner_full_name
+FROM public.callup_events
+ORDER BY event_datetime DESC
 LIMIT 5;
-

@@ -1,8 +1,2 @@
--- Запрос 5.2: Посчитать количество призывников по городам проживания
-SELECT 
-    TRIM(SPLIT_PART(adres_prozhivaniya, ',', 1)) AS city,
-    COUNT(*) AS prizivniki_count
-FROM public.prizivnik
-GROUP BY city
-ORDER BY prizivniki_count DESC;
-
+-- 5.2: Количество по городам
+SELECT TRIM(SPLIT_PART(residence_address, ',', 1)) as city, COUNT(*) FROM public.conscripts GROUP BY 1 ORDER BY 2 DESC;

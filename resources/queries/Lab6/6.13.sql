@@ -1,13 +1,12 @@
--- 2.1.13: Показать военные билеты вместе с ФИО призывника и возрастом призывника
+-- 6.13: Показать военные билеты вместе с ФИО призывника и возрастом призывника
 SELECT
-    vb.id_bileta,
-    vb.nomer_bileta,
-    vb.voinskoe_zvanie,
-    vb.kategoria,
-    p.fio AS prizivnik_name,
-    EXTRACT(YEAR FROM AGE(CURRENT_DATE, p.data_rozhdeniya)) AS prizivnik_age,
-    vb.data_vydachi
-FROM public.voennyi_bilet vb
-JOIN public.prizivnik p ON p.id_prizivnik = vb.id_prizivnika
-ORDER BY p.fio;
-
+    vb.ticket_id,
+    vb.ticket_number,
+    vb.military_rank,
+    vb.category,
+    p.full_name AS conscript_name,
+    EXTRACT(YEAR FROM AGE(CURRENT_DATE, p.birth_date)) AS conscript_age,
+    vb.issue_date
+FROM public.military_id_cards vb
+JOIN public.conscripts p ON p.conscript_id = vb.conscript_id
+ORDER BY p.full_name;

@@ -1,11 +1,10 @@
--- 2.1.30: Статистика по категориям годности (сколько призывников в каждой категории)
+-- 6.30: Статистика по категориям годности (сколько призывников в каждой категории)
 SELECT 
-    kg.nazvanie_kategorii,
-    COUNT(DISTINCT p.id_prizivnik) AS prizivniki_count,
-    ROUND(COUNT(DISTINCT p.id_prizivnik) * 100.0 / NULLIF((SELECT COUNT(*) FROM public.voennyi_bilet), 0), 2) AS percentage
-FROM public.kategoria_godnosti kg
-LEFT JOIN public.voennyi_bilet vb ON vb.id_kategorii = kg.id_kategorii
-LEFT JOIN public.prizivnik p ON p.id_prizivnik = vb.id_prizivnika
-GROUP BY kg.nazvanie_kategorii
-ORDER BY prizivniki_count DESC;
-
+    kg.category_name,
+    COUNT(DISTINCT p.conscript_id) AS conscripts_count,
+    ROUND(COUNT(DISTINCT p.conscript_id) * 100.0 / NULLIF((SELECT COUNT(*) FROM public.military_id_cards), 0), 2) AS percentage
+FROM public.fitness_categories kg
+LEFT JOIN public.military_id_cards vb ON vb.category_id = kg.category_id
+LEFT JOIN public.conscripts p ON p.conscript_id = vb.conscript_id
+GROUP BY kg.category_name
+ORDER BY conscripts_count DESC;

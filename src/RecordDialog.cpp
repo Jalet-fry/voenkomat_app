@@ -1,4 +1,5 @@
 #include "RecordDialog.h"
+#include "DbConstants.h"
 #include <QPushButton>
 #include <QMessageBox>
 #include <QDialogButtonBox>
@@ -26,43 +27,64 @@ RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName,
     // Получаем информацию о внешних ключах
     m_foreignKeys = m_dbManager->getForeignKeyInfo(tableName);
 
+    using namespace Db;
+
     // Инициализация русских названий полей
-    m_fieldDisplayNames["id_prizivnik"] = "ID призывника";
-    m_fieldDisplayNames["fio"] = "ФИО";
-    m_fieldDisplayNames["data_rozhdeniya"] = "Дата рождения";
-    m_fieldDisplayNames["adres_prozhivaniya"] = "Адрес проживания";
-    m_fieldDisplayNames["nomer_pasporta"] = "Номер паспорта";
-    m_fieldDisplayNames["id_comissar"] = "ID комиссара";
-    m_fieldDisplayNames["dolzhnost"] = "Должность";
-    m_fieldDisplayNames["stazh_raboty"] = "Стаж работы";
-    m_fieldDisplayNames["kontaktnyi_telefon"] = "Контактный телефон";
-    m_fieldDisplayNames["id_kategorii"] = "ID категории";
-    m_fieldDisplayNames["nazvanie_kategorii"] = "Название категории";
-    m_fieldDisplayNames["opisanie_ogranichenii"] = "Описание ограничений";
-    m_fieldDisplayNames["index_kategorii"] = "Индекс категории";
-    m_fieldDisplayNames["osnovanie_dlya_kategorii"] = "Основание для категории";
-    m_fieldDisplayNames["id_osvidetelstvovania"] = "ID освидетельствования";
-    m_fieldDisplayNames["data_provedeniya"] = "Дата проведения";
-    m_fieldDisplayNames["rezultaty_obsledovania"] = "Результаты обследования";
-    m_fieldDisplayNames["fio_vracha"] = "ФИО врача";
-    m_fieldDisplayNames["zaklyuchenie"] = "Заключение";
+    // Conscripts
+    m_fieldDisplayNames[Conscripts::CONSCRIPT_ID] = "ID призывника";
+    m_fieldDisplayNames[Conscripts::FULL_NAME] = "ФИО";
+    m_fieldDisplayNames[Conscripts::BIRTH_DATE] = "Дата рождения";
+    m_fieldDisplayNames[Conscripts::RESIDENCE_ADDRESS] = "Адрес проживания";
+    m_fieldDisplayNames[Conscripts::PASSPORT_NUMBER] = "Номер паспорта";
+    m_fieldDisplayNames[Conscripts::MILITARY_TICKET_ID] = "ID военного билета";
+    m_fieldDisplayNames[Conscripts::REGISTRATION_CARD_ID] = "ID учётной карты";
+
+    // Commissioners
+    m_fieldDisplayNames[Commissioners::COMMISSIONER_ID] = "ID комиссара";
+    m_fieldDisplayNames[Commissioners::FULL_NAME] = "ФИО комиссара";
+    m_fieldDisplayNames[Commissioners::POSITION] = "Должность";
+    m_fieldDisplayNames[Commissioners::YEARS_OF_SERVICE] = "Стаж работы";
+    m_fieldDisplayNames[Commissioners::PHONE_NUMBER] = "Контактный телефон";
+
+    // Fitness Categories
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_ID] = "ID категории";
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_NAME] = "Название категории";
+    m_fieldDisplayNames[FitnessCategories::RESTRICTION_DESCRIPTION] = "Описание ограничений";
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_INDEX] = "Индекс категории";
+    m_fieldDisplayNames[FitnessCategories::CATEGORY_BASIS] = "Основание для категории";
+
+    // Medical Examinations
+    m_fieldDisplayNames[MedicalExaminations::CERTIFICATION_ID] = "ID освидетельствования";
+    m_fieldDisplayNames[MedicalExaminations::EXAMINATION_DATE] = "Дата проведения";
+    m_fieldDisplayNames[MedicalExaminations::EXAMINATION_RESULTS] = "Результаты обследования";
+    m_fieldDisplayNames[MedicalExaminations::DOCTOR_FULL_NAME] = "ФИО врача";
+    m_fieldDisplayNames[MedicalExaminations::CONCLUSION] = "Заключение";
+
+    // Military Id Cards
+    m_fieldDisplayNames[MilitaryIdCards::TICKET_ID] = "ID билета";
+    m_fieldDisplayNames[MilitaryIdCards::TICKET_NUMBER] = "Номер билета";
+    m_fieldDisplayNames[MilitaryIdCards::ISSUE_DATE] = "Дата выдачи";
+    m_fieldDisplayNames[MilitaryIdCards::MILITARY_RANK] = "Воинское звание";
+    m_fieldDisplayNames[MilitaryIdCards::CATEGORY] = "Категория";
+
+    // Service Record Cards
+    m_fieldDisplayNames[ServiceRecordCards::CARD_ID] = "ID карты";
+    m_fieldDisplayNames[ServiceRecordCards::CARD_NUMBER] = "Номер карты";
+    m_fieldDisplayNames[ServiceRecordCards::REGISTRATION_DATE] = "Дата постановки на учёт";
+    m_fieldDisplayNames[ServiceRecordCards::DEFERMENT_HISTORY] = "История отсрочек";
+    m_fieldDisplayNames[ServiceRecordCards::MILITARY_SPECIALTY] = "Военно-учётная специальность";
+
+    // Callup Events
+    m_fieldDisplayNames[CallupEvents::EVENT_ID] = "ID мероприятия";
+    m_fieldDisplayNames[CallupEvents::EVENT_TYPE] = "Тип мероприятия";
+    m_fieldDisplayNames[CallupEvents::EVENT_DATETIME] = "Дата и время";
+    m_fieldDisplayNames[CallupEvents::EVENT_LOCATION] = "Место проведения";
+    m_fieldDisplayNames[CallupEvents::COMMISSIONER_FULL_NAME] = "ФИО комиссара";
+
+    // Common/Relations
     m_fieldDisplayNames["id_prizivnika"] = "ID призывника";
-    m_fieldDisplayNames["id_bileta"] = "ID билета";
-    m_fieldDisplayNames["nomer_bileta"] = "Номер билета";
-    m_fieldDisplayNames["data_vydachi"] = "Дата выдачи";
-    m_fieldDisplayNames["voinskoe_zvanie"] = "Воинское звание";
-    m_fieldDisplayNames["kategoria"] = "Категория";
-    m_fieldDisplayNames["id_karty"] = "ID карты";
-    m_fieldDisplayNames["nomer_karty"] = "Номер карты";
-    m_fieldDisplayNames["data_postanovki_na_uchet"] = "Дата постановки на учёт";
-    m_fieldDisplayNames["istoriya_otsrochek"] = "История отсрочек";
-    m_fieldDisplayNames["voenno_uchetnaya_specialnost"] = "Военно-учётная специальность";
-    m_fieldDisplayNames["id_meropriyatiya"] = "ID мероприятия";
-    m_fieldDisplayNames["tip_meropriyatiya"] = "Тип мероприятия";
-    m_fieldDisplayNames["mesto_provedeniya"] = "Место проведения";
-    m_fieldDisplayNames["fio_comissara"] = "ФИО комиссара";
-    m_fieldDisplayNames["data_vzaimodeistviya"] = "Дата взаимодействия";
-    m_fieldDisplayNames["nomer_kabineta"] = "Номер кабинета";
+    m_fieldDisplayNames[ConscriptsCommissioners::INTERACTION_DATE] = "Дата взаимодействия";
+    m_fieldDisplayNames[ConscriptsCommissioners::OFFICE_NUMBER] = "Номер кабинета";
 
     setupUI();
     if (m_recordId >= 0) {
@@ -100,14 +122,33 @@ void RecordDialog::setupUI()
             }
         }
         
-        // Если это первичный ключ и это добавление, делаем поле только для чтения
+        // Проверяем, является ли колонка auto-increment (SERIAL)
+        QString defaultStr = colDetail.defaultValue.toString();
+        bool isAutoIncrement = !defaultStr.isEmpty() && defaultStr.contains("nextval", Qt::CaseInsensitive);
+        
+        // Если это первичный ключ с auto-increment, делаем поле только для чтения
         QString primaryKeyColumn = m_dbManager->getPrimaryKeyColumn(m_tableName);
-        if (col == primaryKeyColumn && m_recordId < 0) {
+        if (col == primaryKeyColumn) {
+            if (isAutoIncrement) {
+                field->setReadOnly(true);
+                if (m_recordId < 0) {
+                    field->setPlaceholderText("Автоматически");
+                } else {
+                    field->setPlaceholderText("ID нельзя изменить");
+                }
+            } else {
+                if (m_recordId < 0) {
+                    field->setPlaceholderText("Введите значение");
+                } else {
+                    field->setReadOnly(true);
+                    field->setPlaceholderText("ID нельзя изменить");
+                }
+            }
+        } else if (isAutoIncrement && m_recordId < 0) {
             field->setReadOnly(true);
             field->setPlaceholderText("Автоматически");
         }
         
-        // Добавляем подсказку для дат
         if (colDetail.dataType == "date") {
             field->setPlaceholderText("YYYY-MM-DD");
         } else if (colDetail.dataType == "timestamp" || colDetail.dataType == "timestamp without time zone") {
@@ -135,40 +176,27 @@ QString RecordDialog::getDisplayName(const QString &fieldName) const
 
 void RecordDialog::loadRecordData()
 {
-    if (m_recordId < 0) {
-        return;
-    }
-
-    if (!m_dbManager || !m_dbManager->isConnected()) {
-        QMessageBox::critical(this, "Ошибка", "База данных не подключена");
-        return;
-    }
+    if (m_recordId < 0) return;
 
     QString idColumn = m_dbManager->getPrimaryKeyColumn(m_tableName);
-    if (idColumn.isEmpty()) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось определить первичный ключ таблицы");
-        return;
-    }
+    if (idColumn.isEmpty()) return;
 
-    // Используем prepared statement для безопасности
     QSqlQuery query = m_dbManager->prepareQuery(
-        QString("SELECT * FROM %1 WHERE %2 = :id_value").arg(m_tableName).arg(idColumn)
+        QString("SELECT * FROM %1 WHERE %2 = :id_value")
+        .arg(DatabaseManager::escapeIdentifier(m_tableName))
+        .arg(DatabaseManager::escapeIdentifier(idColumn))
     );
     query.bindValue(":id_value", m_recordId);
     
-    bool ok = m_dbManager->executePreparedQuery(query);
-
-    if (ok && query.next()) {
+    if (m_dbManager->executePreparedQuery(query) && query.next()) {
         QStringList columns = m_dbManager->getColumnList(m_tableName);
         for (int i = 0; i < columns.size(); ++i) {
             QString col = columns[i];
             QVariant value = query.value(i);
             if (m_fields.contains(col)) {
-                // Форматируем значение в зависимости от типа
                 if (value.isNull()) {
                     m_fields[col]->setText("");
                 } else {
-                    // Для дат и времени используем специальное форматирование
                     DatabaseManager::ColumnDetail colDetail;
                     foreach (const DatabaseManager::ColumnDetail &detail, m_columnDetails) {
                         if (detail.columnName == col) {
@@ -176,68 +204,36 @@ void RecordDialog::loadRecordData()
                             break;
                         }
                     }
-                    
                     if (colDetail.dataType == "date") {
-                        QDate date = value.toDate();
-                        if (date.isValid()) {
-                            m_fields[col]->setText(date.toString("yyyy-MM-dd"));
-                        } else {
-                            m_fields[col]->setText(value.toString());
-                        }
-                    } else if (colDetail.dataType == "timestamp" || colDetail.dataType == "timestamp without time zone") {
-                        QDateTime datetime = value.toDateTime();
-                        if (datetime.isValid()) {
-                            m_fields[col]->setText(datetime.toString("yyyy-MM-dd hh:mm:ss"));
-                        } else {
-                            m_fields[col]->setText(value.toString());
-                        }
+                        m_fields[col]->setText(value.toDate().toString("yyyy-MM-dd"));
+                    } else if (colDetail.dataType.contains("timestamp")) {
+                        m_fields[col]->setText(value.toDateTime().toString("yyyy-MM-dd hh:mm:ss"));
                     } else {
                         m_fields[col]->setText(value.toString());
                     }
                 }
             }
         }
-    } else {
-        QMessageBox::critical(this, "Ошибка", "Не удалось загрузить запись:\n" + m_dbManager->lastError());
     }
 }
 
 bool RecordDialog::isValidDate(const QString &dateStr)
 {
-    if (dateStr.isEmpty()) {
-        return true; // Пустая дата - это NULL
-    }
-    
-    QRegExp rx("^\\d{4}-\\d{2}-\\d{2}$");
-    if (!rx.exactMatch(dateStr)) {
-        return false;
-    }
-    
+    if (dateStr.isEmpty()) return true;
     QDate date = QDate::fromString(dateStr, "yyyy-MM-dd");
     return date.isValid();
 }
 
 bool RecordDialog::isValidTimestamp(const QString &timestampStr)
 {
-    if (timestampStr.isEmpty()) {
-        return true; // Пустой timestamp - это NULL
-    }
-    
-    QRegExp rx("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$");
-    if (!rx.exactMatch(timestampStr)) {
-        return false;
-    }
-    
+    if (timestampStr.isEmpty()) return true;
     QDateTime datetime = QDateTime::fromString(timestampStr, "yyyy-MM-dd hh:mm:ss");
     return datetime.isValid();
 }
 
 bool RecordDialog::isValidInteger(const QString &value)
 {
-    if (value.isEmpty()) {
-        return true; // Пустое значение - это NULL
-    }
-    
+    if (value.isEmpty()) return true;
     bool ok;
     value.toInt(&ok);
     return ok;
@@ -245,285 +241,112 @@ bool RecordDialog::isValidInteger(const QString &value)
 
 QVariant RecordDialog::formatValueForSQL(const QString &columnName, const QString &value, const QString &dataType)
 {
-    Q_UNUSED(columnName); // Параметр зарезервирован для будущего использования
+    Q_UNUSED(columnName);
     QString trimmedValue = value.trimmed();
+    if (trimmedValue.isEmpty()) return QVariant();
     
-    // Если значение пустое, возвращаем NULL
-    if (trimmedValue.isEmpty()) {
-        return QVariant();
-    }
-    
-    // Обрабатываем в зависимости от типа данных
-    if (dataType == "integer" || dataType == "bigint" || dataType == "smallint") {
-        bool ok;
-        int intValue = trimmedValue.toInt(&ok);
-        if (ok) {
-            return QVariant(intValue);
-        }
-        return QVariant(); // Возвращаем NULL при ошибке
-    } else if (dataType == "numeric" || dataType == "decimal" || dataType == "real" || dataType == "double precision") {
-        bool ok;
-        double doubleValue = trimmedValue.toDouble(&ok);
-        if (ok) {
-            return QVariant(doubleValue);
-        }
-        return QVariant(); // Возвращаем NULL при ошибке
+    if (dataType.contains("int")) {
+        return trimmedValue.toInt();
+    } else if (dataType.contains("numeric") || dataType.contains("real") || dataType.contains("double")) {
+        return trimmedValue.toDouble();
     } else if (dataType == "boolean") {
-        QString lowerValue = trimmedValue.toLower();
-        if (lowerValue == "true" || lowerValue == "1" || lowerValue == "yes" || lowerValue == "t") {
-            return QVariant(true);
-        } else if (lowerValue == "false" || lowerValue == "0" || lowerValue == "no" || lowerValue == "f") {
-            return QVariant(false);
-        }
-        return QVariant(); // Возвращаем NULL при ошибке
+        return trimmedValue.toLower() == "true" || trimmedValue == "1";
     } else if (dataType == "date") {
-        QDate date = QDate::fromString(trimmedValue, "yyyy-MM-dd");
-        if (date.isValid()) {
-            return QVariant(date);
-        }
-        return QVariant(); // Возвращаем NULL при ошибке
-    } else if (dataType == "timestamp" || dataType == "timestamp without time zone") {
-        QDateTime datetime = QDateTime::fromString(trimmedValue, "yyyy-MM-dd hh:mm:ss");
-        if (datetime.isValid()) {
-            return QVariant(datetime);
-        }
-        return QVariant(); // Возвращаем NULL при ошибке
-    } else {
-        // Для строковых типов возвращаем как есть
-        return QVariant(trimmedValue);
+        return QDate::fromString(trimmedValue, "yyyy-MM-dd");
+    } else if (dataType.contains("timestamp")) {
+        return QDateTime::fromString(trimmedValue, "yyyy-MM-dd hh:mm:ss");
     }
+    return trimmedValue;
 }
 
 bool RecordDialog::validateRecord(QString &errorMessage)
 {
-    errorMessage.clear();
-    
-    // Проверяем обязательные поля (NOT NULL)
     foreach (const DatabaseManager::ColumnDetail &detail, m_columnDetails) {
-        // Пропускаем первичный ключ при добавлении (автогенерируется)
-        QString primaryKeyColumn = m_dbManager->getPrimaryKeyColumn(m_tableName);
-        if (detail.columnName == primaryKeyColumn && m_recordId < 0) {
-            continue;
+        if (!m_fields.contains(detail.columnName)) continue;
+        QString value = m_fields[detail.columnName]->text().trimmed();
+        
+        if (!detail.isNullable && value.isEmpty() && detail.defaultValue.isNull()) {
+            errorMessage = QString("Поле '%1' обязательно").arg(getDisplayName(detail.columnName));
+            return false;
         }
         
-        // Проверяем обязательные поля
-        if (!detail.isNullable) {
-            if (!m_fields.contains(detail.columnName)) {
-                errorMessage = QString("Поле '%1' не найдено").arg(getDisplayName(detail.columnName));
+        if (!value.isEmpty()) {
+            if (detail.dataType == "date" && !isValidDate(value)) {
+                errorMessage = QString("Ошибка в поле '%1' (YYYY-MM-DD)").arg(getDisplayName(detail.columnName));
                 return false;
             }
-            
-            QString value = m_fields[detail.columnName]->text().trimmed();
-            if (value.isEmpty() && detail.defaultValue.isNull()) {
-                errorMessage = QString("Поле '%1' обязательно для заполнения").arg(getDisplayName(detail.columnName));
+            if (detail.dataType.contains("timestamp") && !isValidTimestamp(value)) {
+                errorMessage = QString("Ошибка в поле '%1' (YYYY-MM-DD HH:MM:SS)").arg(getDisplayName(detail.columnName));
                 return false;
             }
-        }
-        
-        // Валидация форматов данных
-        if (m_fields.contains(detail.columnName)) {
-            QString value = m_fields[detail.columnName]->text().trimmed();
-            
-            if (!value.isEmpty()) {
-                if (detail.dataType == "date") {
-                    if (!isValidDate(value)) {
-                        errorMessage = QString("Неверный формат даты в поле '%1'. Используйте формат YYYY-MM-DD")
-                                      .arg(getDisplayName(detail.columnName));
-                        return false;
-                    }
-                } else if (detail.dataType == "timestamp" || detail.dataType == "timestamp without time zone") {
-                    if (!isValidTimestamp(value)) {
-                        errorMessage = QString("Неверный формат времени в поле '%1'. Используйте формат YYYY-MM-DD HH:MM:SS")
-                                      .arg(getDisplayName(detail.columnName));
-                        return false;
-                    }
-                } else if (detail.dataType == "integer" || detail.dataType == "bigint" || detail.dataType == "smallint") {
-                    if (!isValidInteger(value)) {
-                        errorMessage = QString("Неверный формат числа в поле '%1'").arg(getDisplayName(detail.columnName));
-                        return false;
-                    }
-                }
-                
-                // Проверка максимальной длины для строковых типов
-                if (detail.characterMaxLength > 0 && (detail.dataType == "character varying" || detail.dataType == "varchar" || detail.dataType == "text")) {
-                    if (value.length() > detail.characterMaxLength) {
-                        errorMessage = QString("Поле '%1' превышает максимальную длину (%2 символов)")
-                                      .arg(getDisplayName(detail.columnName))
-                                      .arg(detail.characterMaxLength);
-                        return false;
-                    }
-                }
+            if (detail.dataType.contains("int") && !isValidInteger(value)) {
+                errorMessage = QString("Ошибка в поле '%1' (целое число)").arg(getDisplayName(detail.columnName));
+                return false;
             }
         }
     }
-    
-    // Проверка внешних ключей
-    foreach (const DatabaseManager::ForeignKeyInfo &fkInfo, m_foreignKeys) {
-        if (m_fields.contains(fkInfo.columnName)) {
-            QString fkValue = m_fields[fkInfo.columnName]->text().trimmed();
-            if (!fkValue.isEmpty()) {
-                // Находим тип данных для этого поля
-                QString dataType;
-                foreach (const DatabaseManager::ColumnDetail &colDetail, m_columnDetails) {
-                    if (colDetail.columnName == fkInfo.columnName) {
-                        dataType = colDetail.dataType;
-                        break;
-                    }
-                }
-                
-                // Преобразуем значение в нужный тип для проверки
-                QVariant checkValue;
-                if (dataType == "integer" || dataType == "bigint" || dataType == "smallint") {
-                    bool ok;
-                    int intValue = fkValue.toInt(&ok);
-                    if (ok) {
-                        checkValue = intValue;
-                    } else {
-                        errorMessage = QString("Поле '%1' должно быть числом")
-                                      .arg(getDisplayName(fkInfo.columnName));
-                        return false;
-                    }
-                } else {
-                    checkValue = fkValue;
-                }
-                
-                // Проверяем существование связанной записи
-                if (!m_dbManager->recordExists(fkInfo.referencedTable, fkInfo.referencedColumn, checkValue)) {
-                    errorMessage = QString("Запись с указанным значением в поле '%1' не существует в таблице '%2'")
-                                  .arg(getDisplayName(fkInfo.columnName))
-                                  .arg(fkInfo.referencedTable);
-                    return false;
-                }
-            }
-        }
-    }
-    
     return true;
 }
 
 void RecordDialog::saveRecord()
 {
-    // Проверяем подключение к БД
-    if (!m_dbManager || !m_dbManager->isConnected()) {
-        QMessageBox::critical(this, "Ошибка", "База данных не подключена");
+    QString error;
+    if (!validateRecord(error)) {
+        QMessageBox::warning(this, "Ошибка", error);
         return;
     }
     
-    // Валидация данных
-    QString validationError;
-    if (!validateRecord(validationError)) {
-        QMessageBox::warning(this, "Ошибка валидации", validationError);
-        return;
-    }
-    
-    // Получаем первичный ключ
     QString idColumn = m_dbManager->getPrimaryKeyColumn(m_tableName);
-    if (idColumn.isEmpty()) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось определить первичный ключ таблицы");
-        return;
-    }
-    
-    // Начинаем транзакцию
-    if (!m_dbManager->beginTransaction()) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось начать транзакцию");
-        return;
-    }
+    if (!m_dbManager->beginTransaction()) return;
     
     bool success = false;
-    
     if (m_recordId < 0) {
-        // Добавление новой записи
-        QStringList columnNames;
-        QStringList placeholders;
-        
-        foreach (const DatabaseManager::ColumnDetail &detail, m_columnDetails) {
-            // Пропускаем первичный ключ при добавлении (автогенерируется)
-            if (detail.columnName == idColumn) {
-                continue;
-            }
-            
-            columnNames << detail.columnName;
+        QStringList cols, placeholders;
+        foreach (const auto &detail, m_columnDetails) {
+            QString def = detail.defaultValue.toString();
+            if (detail.columnName == idColumn && def.contains("nextval")) continue;
+            if (def.contains("nextval")) continue;
+            cols << DatabaseManager::escapeIdentifier(detail.columnName);
             placeholders << QString(":%1").arg(detail.columnName);
         }
+
+        QSqlQuery query = m_dbManager->prepareQuery(
+            QString("INSERT INTO %1 (%2) VALUES (%3)")
+            .arg(DatabaseManager::escapeIdentifier(m_tableName))
+            .arg(cols.join(","))
+            .arg(placeholders.join(","))
+        );
         
-        if (columnNames.isEmpty()) {
-            QMessageBox::warning(this, "Ошибка", "Нет полей для вставки");
-            m_dbManager->rollbackTransaction();
-            return;
+        foreach (const auto &detail, m_columnDetails) {
+            QString def = detail.defaultValue.toString();
+            if (detail.columnName == idColumn && def.contains("nextval")) continue;
+            if (def.contains("nextval")) continue;
+            query.bindValue(":" + detail.columnName, formatValueForSQL(detail.columnName, m_fields[detail.columnName]->text(), detail.dataType));
         }
-        
-        QString sql = QString("INSERT INTO %1 (%2) VALUES (%3)")
-            .arg(m_tableName)
-            .arg(columnNames.join(", "))
-            .arg(placeholders.join(", "));
-        
-        QSqlQuery query = m_dbManager->prepareQuery(sql);
-        
-        // Привязываем значения
-        foreach (const DatabaseManager::ColumnDetail &detail, m_columnDetails) {
-            if (detail.columnName == idColumn) {
-                continue;
-            }
-            
-            QString value = m_fields[detail.columnName]->text().trimmed();
-            QVariant formattedValue = formatValueForSQL(detail.columnName, value, detail.dataType);
-            query.bindValue(QString(":%1").arg(detail.columnName), formattedValue);
-        }
-        
         success = m_dbManager->executePreparedQuery(query);
-        
     } else {
-        // Обновление существующей записи
-        QStringList setClause;
-        
-        foreach (const DatabaseManager::ColumnDetail &detail, m_columnDetails) {
-            // Пропускаем первичный ключ при обновлении
-            if (detail.columnName == idColumn) {
-                continue;
-            }
-            
-            setClause << QString("%1 = :%2").arg(detail.columnName).arg(detail.columnName);
+        QStringList set;
+        foreach (const auto &detail, m_columnDetails) {
+            if (detail.columnName == idColumn) continue;
+            set << QString("%1 = :%2").arg(DatabaseManager::escapeIdentifier(detail.columnName)).arg(detail.columnName);
         }
+
+        QSqlQuery query = m_dbManager->prepareQuery(
+            QString("UPDATE %1 SET %2 WHERE %3 = :id_val")
+            .arg(DatabaseManager::escapeIdentifier(m_tableName))
+            .arg(set.join(","))
+            .arg(DatabaseManager::escapeIdentifier(idColumn))
+        );
         
-        if (setClause.isEmpty()) {
-            QMessageBox::warning(this, "Ошибка", "Нет полей для обновления");
-            m_dbManager->rollbackTransaction();
-            return;
+        foreach (const auto &detail, m_columnDetails) {
+            if (detail.columnName == idColumn) continue;
+            query.bindValue(":" + detail.columnName, formatValueForSQL(detail.columnName, m_fields[detail.columnName]->text(), detail.dataType));
         }
-        
-        QString sql = QString("UPDATE %1 SET %2 WHERE %3 = :id_value")
-            .arg(m_tableName)
-            .arg(setClause.join(", "))
-            .arg(idColumn);
-        
-        QSqlQuery query = m_dbManager->prepareQuery(sql);
-        
-        // Привязываем значения
-        foreach (const DatabaseManager::ColumnDetail &detail, m_columnDetails) {
-            if (detail.columnName == idColumn) {
-                continue;
-            }
-            
-            QString value = m_fields[detail.columnName]->text().trimmed();
-            QVariant formattedValue = formatValueForSQL(detail.columnName, value, detail.dataType);
-            query.bindValue(QString(":%1").arg(detail.columnName), formattedValue);
-        }
-        
-        query.bindValue(":id_value", m_recordId);
+        query.bindValue(":id_val", m_recordId);
         success = m_dbManager->executePreparedQuery(query);
     }
     
-    if (success) {
-        if (m_dbManager->commitTransaction()) {
-            QMessageBox::information(this, "Успех", m_recordId < 0 ? "Запись успешно добавлена" : "Запись успешно обновлена");
-            accept();
-        } else {
-            QMessageBox::critical(this, "Ошибка", "Не удалось зафиксировать транзакцию:\n" + m_dbManager->lastError());
-            m_dbManager->rollbackTransaction();
-        }
-    } else {
-        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить запись:\n" + m_dbManager->lastError());
-        m_dbManager->rollbackTransaction();
-    }
+    if (success && m_dbManager->commitTransaction()) accept();
+    else m_dbManager->rollbackTransaction();
 }
 

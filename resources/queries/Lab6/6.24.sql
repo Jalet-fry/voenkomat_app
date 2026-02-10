@@ -1,13 +1,12 @@
--- 2.1.24: Посчитать, сколько призывников относится к каждой категории годности
+-- 6.24: Посчитать, сколько призывников относится к каждой категории годности
 SELECT
-    kg.id_kategorii,
-    kg.nazvanie_kategorii,
-    kg.index_kategorii,
-    CONCAT(kg.nazvanie_kategorii, COALESCE(kg.index_kategorii::text, '')) AS full_category,
-    COUNT(DISTINCT p.id_prizivnik) AS prizivniki_count
-FROM public.kategoria_godnosti kg
-LEFT JOIN public.voennyi_bilet vb ON vb.id_kategorii = kg.id_kategorii
-LEFT JOIN public.prizivnik p ON p.id_prizivnik = vb.id_prizivnika
-GROUP BY kg.id_kategorii, kg.nazvanie_kategorii, kg.index_kategorii
-ORDER BY prizivniki_count DESC;
-
+    kg.category_id,
+    kg.category_name,
+    kg.category_index,
+    CONCAT(kg.category_name, COALESCE(kg.category_index::text, '')) AS full_category,
+    COUNT(DISTINCT p.conscript_id) AS conscripts_count
+FROM public.fitness_categories kg
+LEFT JOIN public.military_id_cards vb ON vb.category_id = kg.category_id
+LEFT JOIN public.conscripts p ON p.conscript_id = vb.conscript_id
+GROUP BY kg.category_id, kg.category_name, kg.category_index
+ORDER BY conscripts_count DESC;

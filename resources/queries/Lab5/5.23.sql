@@ -1,12 +1,10 @@
--- Запрос 5.23: Сгруппировать и получить список категорий годности для каждого призывника
+-- 5.23: Сгруппировать и получить список категорий годности для каждого призывника
 SELECT 
-    p.id_prizivnik,
-    p.fio AS prizivnik_name,
-    STRING_AGG(CONCAT(kg.nazvanie_kategorii, kg.index_kategorii), ', ' ORDER BY kg.id_kategorii) AS categories_list,
-    COUNT(vb.id_bileta) AS categories_count
-FROM public.prizivnik p
-LEFT JOIN public.voennyi_bilet vb ON vb.id_prizivnika = p.id_prizivnik
-LEFT JOIN public.kategoria_godnosti kg ON kg.id_kategorii = vb.id_kategorii
-GROUP BY p.id_prizivnik, p.fio
-ORDER BY p.fio;
-
+    p.full_name AS conscript_name,
+    STRING_AGG(CONCAT(kg.category_name, kg.category_index), ', ' ORDER BY kg.category_id) AS categories_list,
+    COUNT(vb.ticket_id) AS categories_count
+FROM public.conscripts p
+LEFT JOIN public.military_id_cards vb ON vb.conscript_id = p.conscript_id
+LEFT JOIN public.fitness_categories kg ON kg.category_id = vb.category_id
+GROUP BY p.conscript_id, p.full_name
+ORDER BY p.full_name;

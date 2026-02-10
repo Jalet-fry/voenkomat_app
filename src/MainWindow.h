@@ -11,7 +11,6 @@
 
 class TablesWindow;
 class QueriesWindow;
-class TableAdditionWindow;
 
 class MainWindow : public QMainWindow
 {
@@ -24,7 +23,6 @@ public:
 private slots:
     void openQueriesWindow();
     void openTablesWindow();
-    void openTableAdditionWindow();
     void exportAllData();
     void restoreFromBackup();
     void restoreTableFromBackup();
@@ -43,7 +41,6 @@ private:
     QLabel *m_statusLabel; // Статус подключения к БД
     QPushButton *m_queriesBtn;
     QPushButton *m_tablesBtn;
-    QPushButton *m_addTableBtn;
     QPushButton *m_exportBtn;
     QPushButton *m_restoreBtn;
     QPushButton *m_restoreTableBtn;
@@ -51,7 +48,6 @@ private:
 
     TablesWindow *m_tablesWindow;
     QueriesWindow *m_queriesWindow;
-    TableAdditionWindow *m_tableAdditionWindow;
 };
 
 #endif // MAINWINDOW_H

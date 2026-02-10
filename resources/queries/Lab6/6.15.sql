@@ -1,7 +1,6 @@
--- 2.1.15: Выбрать военные билеты призывников, родившихся до 2000 года
-SELECT vb.id_bileta, vb.nomer_bileta, vb.kategoria, vb.voinskoe_zvanie, vb.data_vydachi, p.id_prizivnik
-FROM public.voennyi_bilet vb
-JOIN public.prizivnik p ON p.id_prizivnik = vb.id_prizivnika
-WHERE p.data_rozhdeniya < '2000-01-01'
-ORDER BY p.data_rozhdeniya;
-
+-- 6.15: Выбрать военные билеты призывников, родившихся до 2000 года
+SELECT vb.ticket_id, vb.ticket_number, vb.category, vb.military_rank, vb.issue_date, p.conscript_id
+FROM public.military_id_cards vb
+JOIN public.conscripts p ON p.conscript_id = vb.conscript_id
+WHERE p.birth_date < '2000-01-01'
+ORDER BY p.birth_date;

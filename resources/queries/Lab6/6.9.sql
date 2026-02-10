@@ -1,8 +1,7 @@
--- 2.1.9: Найти призывников, не имеющих ни одного медицинского освидетельствования
-SELECT p.id_prizivnik, p.fio, p.data_rozhdeniya
-FROM public.prizivnik p
+-- 6.9: Найти призывников, не имеющих ни одного медицинского освидетельствования
+SELECT p.conscript_id, p.full_name, p.birth_date
+FROM public.conscripts p
 WHERE NOT EXISTS (
-    SELECT 1 FROM public.med_osvidetelstvovanie mo WHERE mo.id_prizivnika = p.id_prizivnik
+    SELECT 1 FROM public.medical_examinations mo WHERE mo.conscript_id = p.conscript_id
 )
-ORDER BY p.fio;
-
+ORDER BY p.full_name;

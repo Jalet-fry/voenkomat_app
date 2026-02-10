@@ -1,11 +1,10 @@
--- 2.1.7: Для каждого комиссара показать количество связанных призывников
+-- 6.7: Для каждого комиссара показать количество связанных призывников
 SELECT
-    c.id_comissar,
-    c.fio,
-    c.dolzhnost,
-    COUNT(pc.id_prizivnik) AS prizivniki_count
-FROM public.comissar c
-LEFT JOIN public.prizivnik_comissar pc ON pc.id_comissar = c.id_comissar
-GROUP BY c.id_comissar, c.fio, c.dolzhnost
-ORDER BY prizivniki_count DESC, c.fio;
-
+    c.commissioner_id,
+    c.full_name,
+    c.position,
+    COUNT(pc.conscript_id) AS conscripts_count
+FROM public.commissioners c
+LEFT JOIN public.conscripts_commissioners pc ON pc.commissioner_id = c.commissioner_id
+GROUP BY c.commissioner_id, c.full_name, c.position
+ORDER BY conscripts_count DESC, c.full_name;

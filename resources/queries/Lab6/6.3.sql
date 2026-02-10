@@ -1,8 +1,7 @@
--- 2.1.3: Для каждого призывника показать, сколько медицинских освидетельствований связано с ним
+-- 6.3: Для каждого призывника показать, сколько медицинских освидетельствований связано с ним
 SELECT
-    p.id_prizivnik,
-    p.fio,
-    (SELECT COUNT(*) FROM public.med_osvidetelstvovanie mo WHERE mo.id_prizivnika = p.id_prizivnik) AS med_osvidetelstvovaniya_count
-FROM public.prizivnik p
-ORDER BY med_osvidetelstvovaniya_count DESC, p.fio;
-
+    p.conscript_id,
+    p.full_name,
+    (SELECT COUNT(*) FROM public.medical_examinations mo WHERE mo.conscript_id = p.conscript_id) AS examinations_count
+FROM public.conscripts p
+ORDER BY examinations_count DESC, p.full_name;

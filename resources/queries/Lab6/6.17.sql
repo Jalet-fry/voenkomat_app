@@ -1,10 +1,9 @@
--- 2.1.17: Количество и типы призывных мероприятий по каждому комиссару
+-- 6.17: Количество и типы призывных мероприятий по каждому комиссару
 SELECT
-    c.fio AS comissar_name,
-    COUNT(pm.id_meropriyatiya) AS meropriyatiya_count,
-    STRING_AGG(DISTINCT pm.tip_meropriyatiya, ', ' ORDER BY pm.tip_meropriyatiya) AS tipy_meropriyatii
-FROM public.comissar c
-LEFT JOIN public.prizivnoe_meropriyatie pm ON pm.id_comissar = c.id_comissar
-GROUP BY c.id_comissar, c.fio
-ORDER BY meropriyatiya_count DESC;
-
+    c.full_name AS commissioner_name,
+    COUNT(ce.event_id) AS events_count,
+    STRING_AGG(DISTINCT ce.event_type, ', ' ORDER BY ce.event_type) AS event_types
+FROM public.commissioners c
+LEFT JOIN public.callup_events ce ON ce.commissioner_id = c.commissioner_id
+GROUP BY c.commissioner_id, c.full_name
+ORDER BY events_count DESC;

@@ -1,11 +1,5 @@
--- Запрос 5.9: Вывести комиссаров с должностью "Военный комиссар" и отсортировать по стажу
-SELECT 
-    id_comissar,
-    fio,
-    dolzhnost,
-    stazh_raboty,
-    kontaktnyi_telefon
-FROM public.comissar
-WHERE dolzhnost = 'Военный комиссар'
-ORDER BY stazh_raboty DESC;
-
+-- 5.9: Вывести комиссаров с должностью "Военный комиссар"
+SELECT commissioner_id, full_name, years_of_service, phone_number
+FROM public.commissioners
+WHERE position = 'Военный комиссар'
+ORDER BY years_of_service DESC;

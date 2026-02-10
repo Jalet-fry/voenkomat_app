@@ -9,7 +9,8 @@
 #include "DatabaseManager.h"
 
 class TableViewWindow;
-class TableEditWindow;
+class CreateTableDialog;
+class EditTableStructureDialog;
 
 class TablesWindow : public QWidget
 {
@@ -23,9 +24,10 @@ private slots:
     void refreshTables();
     void openTable(const QString &tableName);
     void showTableContextMenu(const QPoint &pos, const QString &tableName);
-    void editTable(const QString &tableName);
-    void deleteTable(const QString &tableName);
     void backupTable(const QString &tableName);
+    void createTable();
+    void deleteTable(const QString &tableName);
+    void editTableStructure(const QString &tableName);
     void goBack();
 
 private:

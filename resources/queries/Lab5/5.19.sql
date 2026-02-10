@@ -1,14 +1,12 @@
--- Запрос 5.19: Вывести медицинские освидетельствования с именем призывника и категорией годности
+-- 5.19: Вывести медицинские освидетельствования с именем призывника и категорией годности
 SELECT 
-    mo.id_osvidetelstvovania,
-    mo.data_provedeniya,
-    mo.fio_vracha,
-    mo.zaklyuchenie,
-    p.fio AS prizivnik_name,
-    kg.nazvanie_kategorii,
-    kg.opisanie_ogranichenii
-FROM public.med_osvidetelstvovanie mo
-JOIN public.prizivnik p ON p.id_prizivnik = mo.id_prizivnika
-JOIN public.kategoria_godnosti kg ON kg.id_kategorii = mo.id_kategorii
-ORDER BY mo.data_provedeniya DESC;
-
+    mo.certification_id,
+    mo.examination_date,
+    mo.doctor_full_name,
+    mo.conclusion,
+    p.full_name AS conscript_name,
+    kg.category_name
+FROM public.medical_examinations mo
+JOIN public.conscripts p ON p.conscript_id = mo.conscript_id
+JOIN public.fitness_categories kg ON kg.category_id = mo.category_id
+ORDER BY mo.examination_date DESC;

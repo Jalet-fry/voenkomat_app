@@ -1,9 +1,8 @@
--- 2.1.32: Вывести призывников, у которых нет военного билета
-SELECT fio
-FROM public.prizivnik
+-- 6.32: Вывести призывников, у которых нет военного билета
+SELECT full_name
+FROM public.conscripts
 EXCEPT
-SELECT p.fio
-FROM public.voennyi_bilet vb
-JOIN public.prizivnik p ON p.id_prizivnik = vb.id_prizivnika
-ORDER BY fio;
-
+SELECT p.full_name
+FROM public.military_id_cards vb
+JOIN public.conscripts p ON p.conscript_id = vb.conscript_id
+ORDER BY full_name;

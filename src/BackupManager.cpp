@@ -489,6 +489,17 @@ bool BackupManager::executeSQLScript(const QString &sqlScript)
             continue;
         }
 
+        // КРИТИЧНО: Пропускаем DDL команды, которые могут удалить или изменить структуру таблиц
+        // Это защищает от случайного удаления таблиц при восстановлении данных
+        QString upperCommand = trimmed.toUpper();
+        if (upperCommand.startsWith("DROP TABLE") || 
+            upperCommand.startsWith("CREATE TABLE") || 
+            upperCommand.startsWith("ALTER TABLE") ||
+            upperCommand.startsWith("SELECT SETVAL")) {
+            // Пропускаем DDL команды - восстанавливаем только данные (DML)
+            continue;
+        }
+
         bool ok;
         m_dbManager->executeQuery(trimmed, &ok);
         if (!ok) {

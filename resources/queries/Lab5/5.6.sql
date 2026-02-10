@@ -1,15 +1,8 @@
--- Запрос 5.6: Вывести всех призывников с категорией годности А
+-- 5.6: Все призывники с категорией годности А
 SELECT 
-    p.id_prizivnik,
-    p.fio,
-    p.data_rozhdeniya,
-    vb.kategoria,
-    kg.nazvanie_kategorii,
-    kg.index_kategorii,
-    CONCAT(kg.nazvanie_kategorii, kg.index_kategorii) AS full_category
-FROM public.prizivnik p
-JOIN public.voennyi_bilet vb ON vb.id_prizivnika = p.id_prizivnik
-JOIN public.kategoria_godnosti kg ON kg.id_kategorii = vb.id_kategorii
-WHERE vb.kategoria = 'А'
-ORDER BY p.fio;
-
+    p.full_name,
+    kg.category_name
+FROM public.conscripts p
+JOIN public.military_id_cards vb ON vb.conscript_id = p.conscript_id
+JOIN public.fitness_categories kg ON kg.category_id = vb.category_id
+WHERE kg.category_name = 'А';

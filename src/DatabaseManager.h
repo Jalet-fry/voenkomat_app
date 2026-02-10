@@ -20,7 +20,7 @@ public:
 
     bool connectToDatabase(const QString &host = "localhost",
                           const QString &port = "5432",
-                          const QString &database = "voenkomat",
+                          const QString &database = "military_db",
                           const QString &username = "postgres",
                           const QString &password = "");
 
@@ -42,7 +42,6 @@ public:
     QStringList getColumnList(const QString &tableName);
     QList<QPair<QString, QString>> getColumnInfo(const QString &tableName);
     
-    // Структура для хранения детальной информации о колонке
     struct ColumnDetail {
         QString columnName;
         QString dataType;
@@ -51,18 +50,17 @@ public:
         int characterMaxLength;
     };
     
-    // Методы для получения информации о структуре таблиц
     QStringList getPrimaryKeys(const QString &tableName);
     QString getPrimaryKeyColumn(const QString &tableName);
     QList<ColumnDetail> getColumnDetails(const QString &tableName);
     QStringList getForeignKeys(const QString &tableName);
-    // Структура для хранения информации о внешнем ключе
+
     struct ForeignKeyInfo {
-        QString constraintName;      // Имя constraint
-        QString columnName;          // Колонка текущей таблицы
-        QString referencedTable;     // Целевая таблица
-        QString referencedColumn;    // Целевая колонка
-        QString deleteRule;          // ON DELETE правило (CASCADE, RESTRICT, SET NULL, NO ACTION)
+        QString constraintName;
+        QString columnName;
+        QString referencedTable;
+        QString referencedColumn;
+        QString deleteRule;
     };
     QList<ForeignKeyInfo> getForeignKeyInfo(const QString &tableName);
     QString getForeignKeyConstraintName(const QString &tableName, const QString &columnName);
@@ -72,10 +70,15 @@ public:
                       const QString &deleteRule = "RESTRICT");
     bool removeForeignKey(const QString &tableName, const QString &constraintName);
     bool recordExists(const QString &tableName, const QString &columnName, const QVariant &value);
+    bool checkUniqueValue(const QString &tableName, const QString &columnName, 
+                         const QVariant &value, int excludeRecordId = -1);
+    bool checkUniqueConstraint(const QString &tableName, const QString &constraintName,
+                               const QStringList &columnNames, const QList<QVariant> &values,
+                               int excludeRecordId = -1);
     QStringList getUniqueConstraints(const QString &tableName);
     QStringList getIndexes(const QString &tableName);
     QStringList getSequences(const QString &tableName);
-    // Структура для хранения информации о sequence
+
     struct SequenceInfo {
         QString sequenceName;
         QString columnName;
@@ -84,7 +87,14 @@ public:
     QList<SequenceInfo> getSequenceInfo(const QString &tableName);
     QString getColumnDefinition(const QString &tableName, const QString &columnName);
     
-    // Вспомогательная функция для экранирования идентификаторов SQL
+    bool createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns,
+                     const QStringList &primaryKeys = QStringList());
+    bool dropTable(const QString &tableName, bool cascade = false);
+    bool addColumn(const QString &tableName, const QString &columnName, const QString &dataType, 
+                  bool isNullable = true, const QVariant &defaultValue = QVariant());
+    bool dropColumn(const QString &tableName, const QString &columnName);
+    bool alterColumnType(const QString &tableName, const QString &columnName, const QString &newDataType);
+    
     static QString escapeIdentifier(const QString &identifier);
 
 private:
@@ -93,4 +103,3 @@ private:
 };
 
 #endif // DATABASEMANAGER_H
-

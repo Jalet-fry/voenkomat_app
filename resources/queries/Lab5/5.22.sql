@@ -1,17 +1,12 @@
--- Запрос 5.22: Показать пары призывник-категория годности
+-- 5.22: Показать пары призывник-категория годности
 SELECT 
-    p.id_prizivnik,
-    p.fio AS prizivnik_name,
-    vb.kategoria,
-    kg.nazvanie_kategorii,
-    kg.index_kategorii,
-    CONCAT(kg.nazvanie_kategorii, kg.index_kategorii) AS full_category,
-    kg.opisanie_ogranichenii
-FROM public.prizivnik p
-JOIN public.voennyi_bilet vb ON vb.id_prizivnika = p.id_prizivnik
-JOIN public.kategoria_godnosti kg ON kg.id_kategorii = vb.id_kategorii
-ORDER BY p.fio;
-
-
-
-
+    p.full_name AS conscript_name,
+    vb.category AS ticket_category,
+    kg.category_name,
+    kg.category_index,
+    CONCAT(kg.category_name, kg.category_index) AS full_category,
+    kg.restriction_description
+FROM public.conscripts p
+JOIN public.military_id_cards vb ON vb.conscript_id = p.conscript_id
+JOIN public.fitness_categories kg ON kg.category_id = vb.category_id
+ORDER BY p.full_name;

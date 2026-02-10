@@ -1,10 +1,9 @@
--- 2.1.33: Вывести города, которые встречаются и среди адресов призывников, и среди мест проведения мероприятий
-SELECT TRIM(REPLACE(REPLACE(SPLIT_PART(adres_prozhivaniya, ',', 1), 'г.', ''), 'г ', '')) AS city
-FROM public.prizivnik
-WHERE adres_prozhivaniya IS NOT NULL
+-- 6.33: Вывести города, которые встречаются и среди адресов призывников, и среди мест проведения мероприятий
+SELECT TRIM(REPLACE(REPLACE(SPLIT_PART(residence_address, ',', 1), 'г.', ''), 'г ', '')) AS city
+FROM public.conscripts
+WHERE residence_address IS NOT NULL
 INTERSECT
-SELECT TRIM(REPLACE(REPLACE(SPLIT_PART(mesto_provedeniya, ',', 1), 'г.', ''), 'г ', '')) AS city
-FROM public.prizivnoe_meropriyatie
-WHERE mesto_provedeniya IS NOT NULL
+SELECT TRIM(REPLACE(REPLACE(SPLIT_PART(event_location, ',', 1), 'г.', ''), 'г ', '')) AS city
+FROM public.callup_events
+WHERE event_location IS NOT NULL
 ORDER BY city;
-

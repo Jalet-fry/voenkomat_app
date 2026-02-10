@@ -1,9 +1,8 @@
--- Запрос 5.28: Вывести список категорий годности с читаемым описанием
+-- 5.28: Вывести список категорий годности с читаемым описанием
 SELECT 
-    kg.id_kategorii,
-    CONCAT(kg.nazvanie_kategorii, kg.index_kategorii) AS full_category,
-    kg.opisanie_ogranichenii AS description,
-    kg.osnovanie_dlya_kategorii AS basis
-FROM public.kategoria_godnosti kg
-ORDER BY kg.nazvanie_kategorii, kg.index_kategorii;
-
+    category_id,
+    CONCAT(category_name, category_index) AS full_category,
+    restriction_description AS description,
+    category_basis AS basis
+FROM public.fitness_categories
+ORDER BY category_name, category_index;
