@@ -1,0 +1,127 @@
+Министерство образования Республики Беларусь
+
+Учреждение образования
+БЕЛОРУССКИЙ ГОСУДАРСТВЕННЫЙ УНИВЕРСИТЕТ
+ИНФОРМАТИКИ И РАДИОЭЛЕКТРОНИКИ
+
+Факультет компьютерных систем и сетей
+Кафедра электронных вычислительных машин
+
+Дисциплина: Базы данных
+
+ОТЧЕТ
+по лабораторной работе №1
+«Разработка серверной части прикладной программы»
+на тему
+ВОЕНКОМАТ
+
+Студент: В.А. Волосевич
+Преподаватель: С.С. Силич
+
+Минск 2026
+
+2.2 Описание таблиц
+
+Таблица conscripts представляет основные данные о призывниках. Описание полей:
+– conscript_id: идентификатор призывника. Первичный ключ (автоинкремент);
+– full_name: ФИО призывника;
+– birth_date: дата рождения;
+– residence_address: адрес проживания;
+– passport_number: серия и номер паспорта.
+
+Таблица fitness_categories является справочником категорий годности. Описание полей:
+– category_id: идентификатор категории. Первичный ключ;
+– category_name: обозначение категории (А, Б, В, Г, Д);
+– restriction_description: описание ограничений.
+
+Таблица medical_examinations содержит данные о медицинских освидетельствованиях. Описание полей:
+– certification_id: идентификатор осмотра. Первичный ключ;
+– examination_date: дата проведения;
+– conscript_id: внешний ключ на призывника;
+– category_id: внешний ключ на категорию годности.
+
+2.3 Выделение справочных и основных таблиц
+
+К категории справочных таблиц относятся fitness_categories и commissioners. Основной таблицей системы является conscripts, так как она содержит ключевые данные о субъектах учета. Приложение стартует с отображения списка призывников.
+
+2.4 Выделение прав доступа
+
+В системе реализованы две роли:
+1. Пользователь: просмотр данных, добавление призывников и медосмотров.
+2. Суперпользователь: полный доступ, редактирование справочников, создание бэкапа. Пароль доступа: admin28.
+
+2.5 Определение требований к серверной части
+
+Серверная часть реализована на языке Python с использованием фреймворка FastAPI.
+Реализованы следующие эндпоинты:
+- GET /api/{table}: получение данных таблицы;
+- POST /api/backup: создание SQL-дампа базы данных;
+- GET /api/export/xlsx/{table}: экспорт данных в формат Excel.
+
+3 ПРОГРАММИРОВАНИЕ СЕРВЕРНОЙ ЧАСТИ
+
+3.1 Создание скриптов
+Для создания таблиц используется SQL-скрипт (см. Приложение А). Также реализован триггер для проверки возраста призывника (18-27 лет).
+
+3.2 Реализация HTTP-сервера
+Взаимодействие с базой данных PostgreSQL осуществляется через библиотеку psycopg2 (libpq). Ответы сервера передаются в формате JSON. Тестирование проводилось через Swagger UI (/docs).
+
+ПРИЛОЖЕНИЕ А
+Листинг кода сервера (main.py)
+
+import os
+import subprocess
+import datetime
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import pandas as pd
+
+app = FastAPI(title="Voenkomat Backend API", version="1.4")
+
+def get_db_config():
+    # Чтение PGPASSWORD и config.ini
+    env_password = os.getenv("PGPASSWORD")
+    return {
+        "host": "localhost",
+        "port": "5432",
+        "database": "military_db",
+        "user": "postgres",
+        "password": env_password
+    }
+
+@app.get("/api/{table}")
+def read_table(table: str):
+    conn = psycopg2.connect(**get_db_config())
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(f"SELECT * FROM public.{table}")
+    result = cur.fetchall()
+    cur.close()
+    conn.close()
+    return result
+
+@app.get("/api/export/xlsx/{table}")
+def export_xlsx(table: str):
+    conn = psycopg2.connect(**get_db_config())
+    df = pd.read_sql(f"SELECT * FROM {table}", conn)
+    file_path = f"exports/{table}.xlsx"
+    df.to_excel(file_path, index=False)
+    return FileResponse(file_path)
+
+@app.post("/api/backup")
+def create_backup():
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    filepath = f"exports/backups/backup_{timestamp}.sql"
+    subprocess.run(["pg_dump", "-f", filepath, "military_db"], check=True)
+    return {"status": "success", "file": filepath}
+
+# Скрипт создания таблиц (create_schema.sql)
+CREATE TABLE public.conscripts (
+    conscript_id SERIAL PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    birth_date DATE,
+    residence_address TEXT,
+    passport_number VARCHAR(20)
+);
+-- ... и остальные таблицы согласно схеме
