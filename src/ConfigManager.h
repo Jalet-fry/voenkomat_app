@@ -15,7 +15,11 @@ public:
     QString getDatabasePort() const;
     QString getDatabaseName() const;
     QString getDatabaseUsername() const;
-    QString getDatabasePassword() const; // Читает из переменной окружения PGPASSWORD
+    QString getDatabasePassword() const;
+
+    // Параметры режима работы
+    bool isHttpMode() const;
+    void setHttpMode(bool enabled);
     
     // Сохранение параметров подключения к БД
     void setDatabaseHost(const QString &host);
@@ -36,8 +40,7 @@ private:
     
     QString findConfigFilePath(const QString &configFile) const;
     QString readValue(const QString &key, const QString &defaultValue = "") const;
-    void writeValue(const QString &key, const QString &value);
+    void writeValue(const QString &key, const QVariant &value);
 };
 
 #endif // CONFIGMANAGER_H
-

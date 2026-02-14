@@ -34,10 +34,7 @@ ConfigManager::~ConfigManager() { delete m_settings; }
 
 QString ConfigManager::getDatabaseHost() const { return readValue("Database/host", "localhost"); }
 QString ConfigManager::getDatabasePort() const { return readValue("Database/port", "5432"); }
-
-// ЗДЕСЬ БЫЛА ОШИБКА: меняем дефолт на military_db
 QString ConfigManager::getDatabaseName() const { return readValue("Database/database", "military_db"); }
-
 QString ConfigManager::getDatabaseUsername() const { return readValue("Database/username", "postgres"); }
 
 QString ConfigManager::getDatabasePassword() const
@@ -45,6 +42,16 @@ QString ConfigManager::getDatabasePassword() const
     QString envPassword = QProcessEnvironment::systemEnvironment().value("PGPASSWORD");
     if (!envPassword.isEmpty()) return envPassword;
     return readValue("Database/password", "");
+}
+
+bool ConfigManager::isHttpMode() const
+{
+    return m_settings->value("Mode/use_http", false).toBool();
+}
+
+void ConfigManager::setHttpMode(bool enabled)
+{
+    writeValue("Mode/use_http", enabled);
 }
 
 void ConfigManager::setDatabaseHost(const QString &host) { writeValue("Database/host", host); }
@@ -64,11 +71,13 @@ bool ConfigManager::createDefaultConfig() const
     out << "[Database]\n";
     out << "host=localhost\n";
     out << "port=5432\n";
-    out << "database=military_db\n"; // Новое имя по умолчанию
-    out << "username=postgres\n";
+    out << "database=military_db\n";
+    out << "username=postgres\n\n";
+    out << "[Mode]\n";
+    out << "use_http=false\n";
     file.close();
     return true;
 }
 
 QString ConfigManager::readValue(const QString &key, const QString &defaultValue) const { return m_settings->value(key, defaultValue).toString(); }
-void ConfigManager::writeValue(const QString &key, const QString &value) { m_settings->setValue(key, value); m_settings->sync(); }
+void ConfigManager::writeValue(const QString &key, const QVariant &value) { m_settings->setValue(key, value); m_settings->sync(); }

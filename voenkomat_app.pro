@@ -1,4 +1,4 @@
-QT += core widgets sql
+QT += core widgets sql network
 
 CONFIG += c++11
 

@@ -9,6 +9,13 @@
 #include <QVariant>
 #include <QList>
 #include <QPair>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QEventLoop>
 
 class DatabaseManager : public QObject
 {
@@ -17,6 +24,9 @@ class DatabaseManager : public QObject
 public:
     explicit DatabaseManager(QObject *parent = nullptr);
     ~DatabaseManager();
+
+    void setHttpMode(bool enabled) { m_httpMode = enabled; }
+    bool isHttpMode() const { return m_httpMode; }
 
     bool connectToDatabase(const QString &host = "localhost",
                           const QString &port = "5432",
@@ -28,8 +38,10 @@ public:
     void disconnect();
 
     QSqlQuery executeQuery(const QString &query, bool *ok = nullptr);
-    QSqlQuery prepareQuery(const QString &query);
-    bool executePreparedQuery(QSqlQuery &query);
+    QJsonArray executeCustomQueryHttp(const QString &sql, bool *ok = nullptr);
+
+    QJsonArray fetchTableDataHttp(const QString &tableName);
+    QStringList getTableList();
 
     QString lastError() const;
     QSqlDatabase database() const;
@@ -38,10 +50,8 @@ public:
     bool commitTransaction();
     bool rollbackTransaction();
 
-    QStringList getTableList();
     QStringList getColumnList(const QString &tableName);
-    QList<QPair<QString, QString>> getColumnInfo(const QString &tableName);
-    
+
     struct ColumnDetail {
         QString columnName;
         QString dataType;
@@ -49,57 +59,52 @@ public:
         QVariant defaultValue;
         int characterMaxLength;
     };
-    
-    QStringList getPrimaryKeys(const QString &tableName);
-    QString getPrimaryKeyColumn(const QString &tableName);
-    QList<ColumnDetail> getColumnDetails(const QString &tableName);
-    QStringList getForeignKeys(const QString &tableName);
 
     struct ForeignKeyInfo {
         QString constraintName;
         QString columnName;
         QString referencedTable;
         QString referencedColumn;
+        QString updateRule;
         QString deleteRule;
     };
-    QList<ForeignKeyInfo> getForeignKeyInfo(const QString &tableName);
-    QString getForeignKeyConstraintName(const QString &tableName, const QString &columnName);
-    QString getForeignKeyDeleteRule(const QString &tableName, const QString &constraintName);
-    bool addForeignKey(const QString &tableName, const QString &columnName, 
-                      const QString &referencedTable, const QString &referencedColumn,
-                      const QString &deleteRule = "RESTRICT");
-    bool removeForeignKey(const QString &tableName, const QString &constraintName);
-    bool recordExists(const QString &tableName, const QString &columnName, const QVariant &value);
-    bool checkUniqueValue(const QString &tableName, const QString &columnName, 
-                         const QVariant &value, int excludeRecordId = -1);
-    bool checkUniqueConstraint(const QString &tableName, const QString &constraintName,
-                               const QStringList &columnNames, const QList<QVariant> &values,
-                               int excludeRecordId = -1);
-    QStringList getUniqueConstraints(const QString &tableName);
-    QStringList getIndexes(const QString &tableName);
-    QStringList getSequences(const QString &tableName);
 
     struct SequenceInfo {
         QString sequenceName;
-        QString columnName;
-        qint64 currentValue;
+        long long currentValue;
+        long long increment;
     };
-    QList<SequenceInfo> getSequenceInfo(const QString &tableName);
-    QString getColumnDefinition(const QString &tableName, const QString &columnName);
     
-    bool createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns,
-                     const QStringList &primaryKeys = QStringList());
+    QStringList getPrimaryKeys(const QString &tableName);
+    QString getPrimaryKeyColumn(const QString &tableName);
+    QList<ColumnDetail> getColumnDetails(const QString &tableName);
+    QList<ForeignKeyInfo> getForeignKeyInfo(const QString &tableName);
+    QStringList getForeignKeys(const QString &tableName);
+
+    QList<QPair<QString, QString>> getColumnInfo(const QString &tableName);
+    QString getColumnDefinition(const QString &tableName, const QString &columnName);
+    QStringList getUniqueConstraints(const QString &tableName);
+    QStringList getIndexes(const QString &tableName);
+    QStringList getSequences(const QString &tableName);
+    QList<SequenceInfo> getSequenceInfo(const QString &tableName);
+
+    bool createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QStringList &primaryKeys);
     bool dropTable(const QString &tableName, bool cascade = false);
-    bool addColumn(const QString &tableName, const QString &columnName, const QString &dataType, 
-                  bool isNullable = true, const QVariant &defaultValue = QVariant());
+    bool addColumn(const QString &tableName, const QString &columnName, const QString &dataType, bool isNullable = true, const QVariant &defaultValue = QVariant());
     bool dropColumn(const QString &tableName, const QString &columnName);
     bool alterColumnType(const QString &tableName, const QString &columnName, const QString &newDataType);
-    
+
+    QByteArray sendHttpGetRequest(const QString &url);
     static QString escapeIdentifier(const QString &identifier);
+    QSqlQuery prepareQuery(const QString &query);
+    bool executePreparedQuery(QSqlQuery &query);
 
 private:
     QSqlDatabase m_db;
     QString m_lastError;
+    bool m_httpMode;
+    QNetworkAccessManager *m_networkManager;
+    QString m_serverUrl;
 };
 
 #endif // DATABASEMANAGER_H

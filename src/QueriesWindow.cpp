@@ -14,6 +14,8 @@
 #include <QApplication>
 #include <QSqlRecord>
 #include <QDesktopWidget>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <algorithm>
 
 QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
@@ -23,7 +25,6 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     setWindowTitle("Управление запросами (Military DB)");
     resize(1000, 750);
 
-    // Центрирование окна
     setGeometry(
         QStyle::alignedRect(
             Qt::LeftToRight,
@@ -93,7 +94,6 @@ QString QueriesWindow::parseQueryDescription(const QString &sqlText) const
         QString t = line.trimmed();
         if (t.startsWith("--")) {
             QString desc = t.mid(2).trimmed();
-            // Убираем технические префиксы, чтобы оставить только суть
             desc.remove(QRegExp("^(Запрос|Задание)\\s*\\d+\\.\\d+(\\.\\d+)?[:]?\\s*", Qt::CaseInsensitive));
             desc.remove(QRegExp("^\\d+\\.\\d+(\\.\\d+)?[:]?\\s*"));
             if (desc.isEmpty()) continue;
@@ -106,11 +106,8 @@ QString QueriesWindow::parseQueryDescription(const QString &sqlText) const
 void QueriesWindow::loadQueries()
 {
     m_allQueries.clear();
-
-    // 1. Загружаем встроенные
     m_allQueries = getEmbeddedQueries();
 
-    // 2. Сканируем диск
     QDir baseDir(qApp->applicationDirPath());
     baseDir.cdUp();
     QString queriesPath = baseDir.absoluteFilePath("resources/queries");
@@ -143,11 +140,9 @@ void QueriesWindow::loadQueries()
         }
     }
 
-    // НАТУРАЛЬНАЯ СОРТИРОВКА (5.2 < 5.10)
     std::sort(m_allQueries.begin(), m_allQueries.end(), [](const QueryInfo &a, const QueryInfo &b) {
         QStringList aParts = a.number.split('.');
         QStringList bParts = b.number.split('.');
-
         for (int i = 0; i < qMin(aParts.size(), bParts.size()); ++i) {
             int aVal = aParts[i].toInt();
             int bVal = bParts[i].toInt();
@@ -164,17 +159,9 @@ void QueriesWindow::refreshTable()
     m_table->setRowCount(m_allQueries.size());
     for (int i = 0; i < m_allQueries.size(); ++i) {
         const QueryInfo &q = m_allQueries[i];
-
-        QTableWidgetItem *numItem = new QTableWidgetItem(q.number);
-        numItem->setTextAlignment(Qt::AlignCenter);
-        m_table->setItem(i, 0, numItem);
-
-        QTableWidgetItem *typeItem = new QTableWidgetItem(q.type);
-        typeAlignment: Qt::AlignCenter;
-        m_table->setItem(i, 1, typeItem);
-
+        m_table->setItem(i, 0, new QTableWidgetItem(q.number));
+        m_table->setItem(i, 1, new QTableWidgetItem(q.type));
         m_table->setItem(i, 2, new QTableWidgetItem(q.description));
-
         QPushButton *runBtn = new QPushButton("Выполнить", this);
         runBtn->setObjectName("runBtn");
         runBtn->setMinimumHeight(30);
@@ -186,22 +173,44 @@ void QueriesWindow::refreshTable()
 void QueriesWindow::runQuery(const QueryInfo &queryInfo)
 {
     if (!m_dbManager->isConnected()) return;
-    bool ok;
-    QSqlQuery query = m_dbManager->executeQuery(queryInfo.sqlText, &ok);
-    if (!ok) {
-        QMessageBox::critical(this, "Ошибка SQL", "Запрос " + queryInfo.number + " не выполнен:\n" + m_dbManager->lastError());
-        return;
-    }
 
     QStringList cols;
-    QSqlRecord rec = query.record();
-    for (int i = 0; i < rec.count(); ++i) cols << rec.fieldName(i);
-
     QList<QList<QVariant>> rows;
-    while (query.next()) {
-        QList<QVariant> row;
-        for (int i = 0; i < cols.size(); ++i) row << query.value(i);
-        rows << row;
+
+    if (m_dbManager->isHttpMode()) {
+        bool ok;
+        QJsonArray data = m_dbManager->executeCustomQueryHttp(queryInfo.sqlText, &ok);
+        if (!ok) {
+            QMessageBox::critical(this, "Ошибка API", "Запрос не выполнен:\n" + m_dbManager->lastError());
+            return;
+        }
+        if (data.isEmpty()) {
+            QMessageBox::information(this, "Результат", "Запрос выполнен, данных нет.");
+            return;
+        }
+        // Получаем колонки из первого объекта
+        QJsonObject first = data[0].toObject();
+        cols = first.keys();
+        for (int i = 0; i < data.size(); ++i) {
+            QList<QVariant> row;
+            QJsonObject obj = data[i].toObject();
+            foreach (const QString &col, cols) row << obj[col].toVariant();
+            rows << row;
+        }
+    } else {
+        bool ok;
+        QSqlQuery query = m_dbManager->executeQuery(queryInfo.sqlText, &ok);
+        if (!ok) {
+            QMessageBox::critical(this, "Ошибка SQL", "Запрос не выполнен:\n" + m_dbManager->lastError());
+            return;
+        }
+        QSqlRecord rec = query.record();
+        for (int i = 0; i < rec.count(); ++i) cols << rec.fieldName(i);
+        while (query.next()) {
+            QList<QVariant> row;
+            for (int i = 0; i < cols.size(); ++i) row << query.value(i);
+            rows << row;
+        }
     }
 
     QueryResultWindow *res = new QueryResultWindow(queryInfo.number + ": " + queryInfo.description, cols, rows, m_dbManager, this);
@@ -210,8 +219,6 @@ void QueriesWindow::runQuery(const QueryInfo &queryInfo)
 }
 
 void QueriesWindow::goBack() { hide(); }
-
-// Заглушки
 void QueriesWindow::addNewQuery() {}
 void QueriesWindow::showQueryContextMenu(const QPoint &) {}
 void QueriesWindow::deleteQuery(const QueryInfo &) {}

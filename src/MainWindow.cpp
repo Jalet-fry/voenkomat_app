@@ -23,14 +23,23 @@ MainWindow::MainWindow(QWidget *parent)
     if (!connectToDatabase()) {
         updateConnectionStatus();
         QString errorDetails = m_dbManager->lastError();
-        QString message = QString("Не удалось подключиться к базе данных.\n\n")
-                         + QString("Ошибка: %1\n\n").arg(errorDetails.isEmpty() ? "Неизвестная ошибка" : errorDetails)
-                         + QString("Проверьте:\n")
-                         + QString("1. Запущен ли PostgreSQL сервер\n")
-                         + QString("2. Правильность параметров в config.ini\n")
-                         + QString("3. Установлена ли переменная окружения PGPASSWORD\n")
-                         + QString("   (В PowerShell: $env:PGPASSWORD = \"ваш_пароль\")\n")
-                         + QString("4. Доступность драйвера QPSQL в Qt");
+        QString message;
+
+        if (m_dbManager->isHttpMode()) {
+            message = QString("Не удалось подключиться к Python серверу.\n\n")
+                             + QString("Ошибка: %1\n\n").arg(errorDetails.isEmpty() ? "Сервер не отвечает" : errorDetails)
+                             + QString("Проверьте:\n")
+                             + QString("1. Запущен ли скрипт main.py (FastAPI)\n")
+                             + QString("2. Правильность адреса/порта в config.ini\n")
+                             + QString("3. Не блокирует ли брандмауэр порт 8000");
+        } else {
+            message = QString("Не удалось подключиться к базе данных напрямую.\n\n")
+                             + QString("Ошибка: %1\n\n").arg(errorDetails.isEmpty() ? "Неизвестная ошибка" : errorDetails)
+                             + QString("Проверьте:\n")
+                             + QString("1. Запущен ли PostgreSQL сервер\n")
+                             + QString("2. Параметры подключения в config.ini\n")
+                             + QString("3. Наличие драйвера QPSQL");
+        }
         
         QMessageBox::critical(this, "Ошибка подключения", message);
     } else {
@@ -40,32 +49,22 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::updateConnectionStatus()
 {
-    if (!m_statusLabel) {
-        return;
-    }
+    if (!m_statusLabel) return;
     
     if (m_dbManager && m_dbManager->isConnected()) {
-        m_statusLabel->setText("✓ Подключено к базе данных");
+        QString mode = m_dbManager->isHttpMode() ? " (API)" : " (SQL)";
+        m_statusLabel->setText("✓ Подключено" + mode);
         m_statusLabel->setStyleSheet("font-size: 12px; padding: 5px; background-color: #90EE90; color: black; border-radius: 4px;");
     } else {
-        m_statusLabel->setText("✗ Не подключено к базе данных");
+        m_statusLabel->setText("✗ Не подключено");
         m_statusLabel->setStyleSheet("font-size: 12px; padding: 5px; background-color: #FFB6C1; color: black; border-radius: 4px;");
     }
 }
 
 MainWindow::~MainWindow()
 {
-    // Явно закрываем и удаляем дочерние окна для корректного освобождения ресурсов
-    if (m_tablesWindow) {
-        m_tablesWindow->close();
-        m_tablesWindow->deleteLater();
-        m_tablesWindow = nullptr;
-    }
-    if (m_queriesWindow) {
-        m_queriesWindow->close();
-        m_queriesWindow->deleteLater();
-        m_queriesWindow = nullptr;
-    }
+    if (m_tablesWindow) { m_tablesWindow->close(); m_tablesWindow->deleteLater(); }
+    if (m_queriesWindow) { m_queriesWindow->close(); m_queriesWindow->deleteLater(); }
 }
 
 void MainWindow::setupUI()
@@ -77,19 +76,15 @@ void MainWindow::setupUI()
     m_layout->setSpacing(15);
     m_layout->setContentsMargins(20, 20, 20, 20);
 
-    // Заголовок
     m_titleLabel = new QLabel("Военкомат", this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setStyleSheet("font-size: 24px; color: #333; font-weight: bold;");
     m_layout->addWidget(m_titleLabel);
 
-    // Статус подключения к БД
     m_statusLabel = new QLabel(this);
     m_statusLabel->setAlignment(Qt::AlignCenter);
-    m_statusLabel->setStyleSheet("font-size: 12px; padding: 5px;");
     m_layout->addWidget(m_statusLabel);
 
-    // Кнопки
     m_queriesBtn = new QPushButton("Запросы", this);
     m_queriesBtn->setMinimumHeight(40);
     connect(m_queriesBtn, &QPushButton::clicked, this, &MainWindow::openQueriesWindow);
@@ -127,46 +122,34 @@ void MainWindow::setupStyles()
 {
     setStyleSheet(
         "QWidget { background-color: #dbffff; }"
-        "QPushButton {"
-        "    background-color: #FFB6C1;"
-        "    font-size: 16px;"
-        "    padding: 10px;"
-        "    border-radius: 8px;"
-        "    color: black;"
-        "    border: none;"
-        "}"
+        "QPushButton { background-color: #FFB6C1; font-size: 16px; padding: 10px; border-radius: 8px; color: black; border: none; min-height: 40px; }"
         "QPushButton:hover { background-color: #FF69B4; }"
-        "QPushButton:pressed { background-color: #FF1493; }"
-        "QPushButton#exitBtn {"
-        "    background-color: #E0B0FF;"
-        "}"
-        "QPushButton#exitBtn:hover { background-color: #c770ff; }"
-        "QPushButton#exitBtn:pressed { background-color: #a314ff; }"
+        "QPushButton#exitBtn { background-color: #E0B0FF; }"
     );
     m_exitBtn->setObjectName("exitBtn");
 }
 
 bool MainWindow::connectToDatabase()
 {
-    // Загружаем параметры подключения из конфигурационного файла
     ConfigManager config;
+    if (!config.configFileExists()) config.createDefaultConfig();
+
+    m_dbManager->setHttpMode(config.isHttpMode());
     
-    // Если конфигурационный файл не существует, создаем его с значениями по умолчанию
-    if (!config.configFileExists()) {
-        if (!config.createDefaultConfig()) {
-            qDebug() << "Не удалось создать конфигурационный файл";
-        }
-    }
-    
-    // Получаем параметры подключения из конфигурации
     QString host = config.getDatabaseHost();
     QString port = config.getDatabasePort();
-    QString database = config.getDatabaseName();
-    QString username = config.getDatabaseUsername();
-    QString password = config.getDatabasePassword();
-    
-    // Подключаемся к базе данных
-    return m_dbManager->connectToDatabase(host, port, database, username, password);
+
+    if (m_dbManager->isHttpMode() && port == "5432") {
+        port = "8000";
+    }
+
+    return m_dbManager->connectToDatabase(
+        host,
+        port,
+        config.getDatabaseName(),
+        config.getDatabaseUsername(),
+        config.getDatabasePassword()
+    );
 }
 
 void MainWindow::openQueriesWindow()
@@ -175,8 +158,6 @@ void MainWindow::openQueriesWindow()
         m_queriesWindow = new QueriesWindow(m_dbManager, this);
         m_queriesWindow->setWindowFlags(Qt::Window);
     }
-    m_queriesWindow->raise();
-    m_queriesWindow->activateWindow();
     m_queriesWindow->show();
 }
 
@@ -186,93 +167,45 @@ void MainWindow::openTablesWindow()
         m_tablesWindow = new TablesWindow(m_dbManager, this);
         m_tablesWindow->setWindowFlags(Qt::Window);
     }
-    m_tablesWindow->raise();
-    m_tablesWindow->activateWindow();
     m_tablesWindow->show();
 }
 
 void MainWindow::exportAllData()
 {
+    if (m_dbManager->isHttpMode()) {
+        QMessageBox::information(this, "Экспорт", "В режиме API экспорт выполняется через серверный эндпоинт.");
+        return;
+    }
     BackupManager backupManager(m_dbManager);
-    
-    // Предлагаем выбор формата экспорта
-    QMessageBox msgBox(this);
-    msgBox.setWindowTitle("Экспорт данных");
-    msgBox.setText("Выберите формат экспорта:");
-    QPushButton *sqlBtn = msgBox.addButton("SQL", QMessageBox::ActionRole);
-    QPushButton *xlsxBtn = msgBox.addButton("Excel", QMessageBox::ActionRole);
-    QPushButton *cancelBtn = msgBox.addButton("Отмена", QMessageBox::RejectRole);
-    msgBox.exec();
-    
-    if (msgBox.clickedButton() == sqlBtn) {
-        // Экспорт в SQL
-        if (backupManager.exportAllTables()) {
-            QString backupsDir = backupManager.getBackupsExportPath("sql");
-            QMessageBox::information(this, "Успех", 
-                QString("Данные успешно экспортированы в папку:\n%1\n\nФайл сохранен в папку: exports/backups/sql/").arg(backupsDir));
-        } else {
-            QMessageBox::critical(this, "Ошибка", "Не удалось экспортировать данные:\n" + backupManager.lastError());
-        }
-    } else if (msgBox.clickedButton() == xlsxBtn) {
-        // Экспорт в Excel
-        if (backupManager.exportAllTablesToXlsx()) {
-            QString xlsxPath = backupManager.lastError(); // В случае успеха здесь путь к файлу
-            QMessageBox::information(this, "Успех", 
-                QString("Все таблицы успешно экспортированы в Excel файл:\n%1\n\nФайл сохранен в папку: exports/backups/xlsx/").arg(xlsxPath));
-        } else {
-            QMessageBox::critical(this, "Ошибка", "Не удалось экспортировать данные:\n" + backupManager.lastError());
-        }
+    if (backupManager.exportAllTables()) {
+        QMessageBox::information(this, "Успех", "Данные успешно экспортированы.");
+    } else {
+        QMessageBox::critical(this, "Ошибка", backupManager.lastError());
     }
 }
 
 void MainWindow::restoreFromBackup()
 {
-    BackupManager backupManager(m_dbManager);
-    QString exportsDir = backupManager.getExportsDirectory();
-    
-    QString fileName = QFileDialog::getOpenFileName(this,
-        "Выберите файл резервной копии", exportsDir, "SQL Files (*.sql)");
-    
-    if (fileName.isEmpty()) {
+    if (m_dbManager->isHttpMode()) {
+        QMessageBox::warning(this, "Ограничение", "Восстановление из бэкапа пока не поддерживается в режиме API.");
         return;
     }
-
-    int ret = QMessageBox::question(this, "Подтверждение восстановления",
-        "Вы уверены, что хотите восстановить базу данных из резервной копии?\n"
-        "Все текущие данные будут удалены!",
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-
-    if (ret == QMessageBox::Yes) {
-        if (backupManager.restoreFromBackup(fileName)) {
-            QMessageBox::information(this, "Успех", "База данных успешно восстановлена!");
-        } else {
-            QMessageBox::critical(this, "Ошибка", "Не удалось восстановить данные:\n" + backupManager.lastError());
-        }
+    BackupManager backupManager(m_dbManager);
+    QString fileName = QFileDialog::getOpenFileName(this, "Выберите файл", "", "SQL Files (*.sql)");
+    if (!fileName.isEmpty() && backupManager.restoreFromBackup(fileName)) {
+        QMessageBox::information(this, "Успех", "База восстановлена.");
     }
 }
 
 void MainWindow::restoreTableFromBackup()
 {
-    BackupManager backupManager(m_dbManager);
-    QString exportsDir = backupManager.getExportsDirectory();
-    
-    QString fileName = QFileDialog::getOpenFileName(this,
-        "Выберите файл резервной копии таблицы", exportsDir, "SQL Files (*.sql)");
-    
-    if (fileName.isEmpty()) {
+    if (m_dbManager->isHttpMode()) {
+        QMessageBox::warning(this, "Ограничение", "Восстановление таблицы пока не поддерживается в режиме API.");
         return;
     }
-
-    int ret = QMessageBox::question(this, "Подтверждение восстановления",
-        "Вы уверены, что хотите восстановить таблицу из резервной копии?",
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-
-    if (ret == QMessageBox::Yes) {
-        if (backupManager.restoreTableFromBackup(fileName)) {
-            QMessageBox::information(this, "Успех", "Таблица успешно восстановлена!");
-        } else {
-            QMessageBox::critical(this, "Ошибка", "Не удалось восстановить таблицу:\n" + backupManager.lastError());
-        }
+    BackupManager backupManager(m_dbManager);
+    QString fileName = QFileDialog::getOpenFileName(this, "Выберите файл", "", "SQL Files (*.sql)");
+    if (!fileName.isEmpty() && backupManager.restoreTableFromBackup(fileName)) {
+        QMessageBox::information(this, "Успех", "Таблица восстановлена.");
     }
 }
-

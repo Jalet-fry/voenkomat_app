@@ -7,9 +7,9 @@
 #include <QLibrary>
 
 DatabaseManager::DatabaseManager(QObject *parent)
-    : QObject(parent)
+    : QObject(parent), m_httpMode(false), m_networkManager(new QNetworkAccessManager(this))
 {
-    // Не создаем базу в конструкторе, будем создавать при подключении
+    m_serverUrl = "http://127.0.0.1:8000";
 }
 
 DatabaseManager::~DatabaseManager()
@@ -23,7 +23,19 @@ bool DatabaseManager::connectToDatabase(const QString &host,
                                        const QString &username,
                                        const QString &password)
 {
-    // Гарантируем закрытие старого соединения перед созданием нового
+    if (m_httpMode) {
+        QString targetHost = (host == "localhost" || host.isEmpty()) ? "127.0.0.1" : host;
+        m_serverUrl = QString("http://%1:%2").arg(targetHost).arg(port == "5432" ? "8000" : port);
+
+        QByteArray response = sendHttpGetRequest(m_serverUrl + "/");
+        if (response.isEmpty()) {
+            m_lastError = "Сервер Python не отвечает по адресу " + m_serverUrl;
+            return false;
+        }
+        qDebug() << "Успешное подключение к серверу (HTTP):" << m_serverUrl;
+        return true;
+    }
+
     if (QSqlDatabase::contains("military_connection")) {
         {
             QSqlDatabase db = QSqlDatabase::database("military_connection");
@@ -41,28 +53,30 @@ bool DatabaseManager::connectToDatabase(const QString &host,
 
     if (!m_db.open()) {
         m_lastError = m_db.lastError().text();
-        qDebug() << "Ошибка подключения к" << database << ":" << m_lastError;
         return false;
     }
-
-    qDebug() << "Успешное подключение к базе данных:" << database;
     return true;
 }
 
-bool DatabaseManager::isConnected() const { return m_db.isOpen(); }
+bool DatabaseManager::isConnected() const {
+    return m_httpMode ? !m_serverUrl.isEmpty() : m_db.isOpen();
+}
 
 void DatabaseManager::disconnect() {
-    if (m_db.isOpen()) {
-        m_db.close();
-    }
+    if (m_db.isOpen()) m_db.close();
 }
 
 QSqlQuery DatabaseManager::executeQuery(const QString &query, bool *ok)
 {
+    if (m_httpMode) {
+        qDebug() << "Warning: executeQuery called in HTTP mode. Use executeCustomQueryHttp for data results.";
+        if (ok) *ok = false;
+        return QSqlQuery(m_db);
+    }
+
     QSqlQuery sqlQuery(m_db);
     if (!sqlQuery.exec(query)) {
         m_lastError = sqlQuery.lastError().text();
-        qDebug() << "SQL Error:" << m_lastError;
         if (ok) *ok = false;
     } else {
         if (ok) *ok = true;
@@ -70,22 +84,55 @@ QSqlQuery DatabaseManager::executeQuery(const QString &query, bool *ok)
     return sqlQuery;
 }
 
-QSqlQuery DatabaseManager::prepareQuery(const QString &query)
+QJsonArray DatabaseManager::executeCustomQueryHttp(const QString &sql, bool *ok)
 {
-    QSqlQuery q(m_db);
-    q.prepare(query);
-    return q;
+    QNetworkRequest request(QUrl(m_serverUrl + "/api/execute-query"));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QJsonObject json;
+    json["sql"] = sql;
+    QJsonDocument doc(json);
+
+    QNetworkReply *reply = m_networkManager->post(request, doc.toJson());
+
+    QEventLoop loop;
+    connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+    loop.exec();
+
+    QJsonArray data;
+    if (reply->error() == QNetworkReply::NoError) {
+        if (ok) *ok = true;
+        QJsonDocument resDoc = QJsonDocument::fromJson(reply->readAll());
+        data = resDoc.object()["data"].toArray();
+    } else {
+        if (ok) *ok = false;
+        m_lastError = reply->errorString();
+        qDebug() << "Custom Query Error:" << m_lastError;
+    }
+    reply->deleteLater();
+    return data;
 }
 
-bool DatabaseManager::executePreparedQuery(QSqlQuery &query) { return query.exec(); }
-QString DatabaseManager::lastError() const { return m_lastError; }
-QSqlDatabase DatabaseManager::database() const { return m_db; }
-bool DatabaseManager::beginTransaction() { return m_db.transaction(); }
-bool DatabaseManager::commitTransaction() { return m_db.commit(); }
-bool DatabaseManager::rollbackTransaction() { return m_db.rollback(); }
+QJsonArray DatabaseManager::fetchTableDataHttp(const QString &tableName)
+{
+    QByteArray response = sendHttpGetRequest(m_serverUrl + "/api/" + tableName + "?limit=1000");
+    if (response.isEmpty()) return QJsonArray();
+    QJsonDocument doc = QJsonDocument::fromJson(response);
+    return doc.object()["data"].toArray();
+}
 
 QStringList DatabaseManager::getTableList()
 {
+    if (m_httpMode) {
+        QStringList tables;
+        QByteArray response = sendHttpGetRequest(m_serverUrl + "/api/all-tables");
+        if (!response.isEmpty()) {
+            QJsonDocument doc = QJsonDocument::fromJson(response);
+            QJsonArray arr = doc.object()["tables"].toArray();
+            for (int i = 0; i < arr.size(); ++i) tables << arr[i].toString();
+        }
+        return tables;
+    }
     QStringList tables;
     QSqlQuery query(m_db);
     query.exec("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'");
@@ -93,93 +140,90 @@ QStringList DatabaseManager::getTableList()
     return tables;
 }
 
-QStringList DatabaseManager::getColumnList(const QString &tableName)
+QByteArray DatabaseManager::sendHttpGetRequest(const QString &url)
 {
-    QStringList columns;
-    QSqlQuery query(m_db);
-    query.prepare("SELECT column_name FROM information_schema.columns WHERE table_name = :t AND table_schema = 'public' ORDER BY ordinal_position");
-    query.bindValue(":t", tableName);
-    if (query.exec()) while (query.next()) columns << query.value(0).toString();
-    return columns;
+    QNetworkRequest request((QUrl(url)));
+    QNetworkReply *reply = m_networkManager->get(request);
+    QEventLoop loop;
+    connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+    loop.exec();
+    QByteArray data;
+    if (reply->error() == QNetworkReply::NoError) data = reply->readAll();
+    else m_lastError = reply->errorString();
+    reply->deleteLater();
+    return data;
 }
 
-QList<QPair<QString, QString>> DatabaseManager::getColumnInfo(const QString &tableName)
-{
-    QList<QPair<QString, QString>> info;
-    QSqlQuery query(m_db);
-    query.prepare("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = :t AND table_schema = 'public' ORDER BY ordinal_position");
-    query.bindValue(":t", tableName);
-    if (query.exec()) while (query.next()) info << qMakePair(query.value(0).toString(), query.value(1).toString());
-    return info;
+// Реализация недостающих методов для компиляции и работы BackupManager/RecordDialog
+QSqlQuery DatabaseManager::prepareQuery(const QString &query) { QSqlQuery q(m_db); q.prepare(query); return q; }
+bool DatabaseManager::executePreparedQuery(QSqlQuery &query) { return query.exec(); }
+QString DatabaseManager::lastError() const { return m_lastError; }
+QSqlDatabase DatabaseManager::database() const { return m_db; }
+bool DatabaseManager::beginTransaction() { return m_httpMode ? true : m_db.transaction(); }
+bool DatabaseManager::commitTransaction() { return m_httpMode ? true : m_db.commit(); }
+bool DatabaseManager::rollbackTransaction() { return m_httpMode ? true : m_db.rollback(); }
+
+QStringList DatabaseManager::getColumnList(const QString &t) {
+    if(m_httpMode) return QStringList();
+    QSqlQuery q(m_db);
+    q.prepare("SELECT column_name FROM information_schema.columns WHERE table_name = :t AND table_schema = 'public' ORDER BY ordinal_position");
+    q.bindValue(":t", t);
+    QStringList c;
+    if(q.exec()) while(q.next()) c << q.value(0).toString();
+    return c;
 }
 
-QStringList DatabaseManager::getPrimaryKeys(const QString &tableName)
-{
+QStringList DatabaseManager::getPrimaryKeys(const QString &t) {
+    if(m_httpMode) return QStringList();
+    QSqlQuery q(m_db);
+    q.prepare("SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = :t");
+    q.bindValue(":t", t);
     QStringList pks;
-    QSqlQuery query(m_db);
-    query.prepare("SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = :t AND tc.table_schema = 'public'");
-    query.bindValue(":t", tableName);
-    if (query.exec()) while (query.next()) pks << query.value(0).toString();
+    if(q.exec()) while(q.next()) pks << q.value(0).toString();
     return pks;
 }
 
-QString DatabaseManager::getPrimaryKeyColumn(const QString &tableName)
-{
-    QStringList pks = getPrimaryKeys(tableName);
+QString DatabaseManager::getPrimaryKeyColumn(const QString &t) {
+    QStringList pks = getPrimaryKeys(t);
     return pks.isEmpty() ? "" : pks.first();
 }
 
-QList<DatabaseManager::ColumnDetail> DatabaseManager::getColumnDetails(const QString &tableName)
-{
+QList<DatabaseManager::ColumnDetail> DatabaseManager::getColumnDetails(const QString &t) {
     QList<ColumnDetail> details;
-    QSqlQuery query(m_db);
-    query.prepare("SELECT column_name, data_type, is_nullable, column_default, character_maximum_length FROM information_schema.columns WHERE table_name = :t AND table_schema = 'public' ORDER BY ordinal_position");
-    query.bindValue(":t", tableName);
-    if (query.exec()) {
-        while (query.next()) {
+    if(m_httpMode) return details;
+    QSqlQuery q(m_db);
+    q.prepare("SELECT column_name, data_type, is_nullable, column_default, character_maximum_length FROM information_schema.columns WHERE table_name = :t AND table_schema = 'public' ORDER BY ordinal_position");
+    q.bindValue(":t", t);
+    if(q.exec()) {
+        while(q.next()) {
             ColumnDetail d;
-            d.columnName = query.value(0).toString();
-            d.dataType = query.value(1).toString();
-            d.isNullable = (query.value(2).toString() == "YES");
-            d.defaultValue = query.value(3);
-            d.characterMaxLength = query.value(4).toInt();
+            d.columnName = q.value(0).toString();
+            d.dataType = q.value(1).toString();
+            d.isNullable = (q.value(2).toString() == "YES");
+            d.defaultValue = q.value(3);
+            d.characterMaxLength = q.value(4).toInt();
             details << d;
         }
     }
     return details;
 }
 
-QStringList DatabaseManager::getForeignKeys(const QString &tableName) { return QStringList(); }
-QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const QString &tableName) { return QList<ForeignKeyInfo>(); }
-QString DatabaseManager::getForeignKeyConstraintName(const QString &tableName, const QString &columnName) { return ""; }
-QString DatabaseManager::getForeignKeyDeleteRule(const QString &tableName, const QString &constraintName) { return ""; }
-bool DatabaseManager::addForeignKey(const QString &tableName, const QString &columnName, const QString &referencedTable, const QString &referencedColumn, const QString &deleteRule) { return false; }
-bool DatabaseManager::removeForeignKey(const QString &tableName, const QString &constraintName) { return false; }
+QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const QString &) { return QList<ForeignKeyInfo>(); }
+QStringList DatabaseManager::getForeignKeys(const QString &) { return QStringList(); }
+QList<QPair<QString, QString>> DatabaseManager::getColumnInfo(const QString &) { return QList<QPair<QString, QString>>(); }
+QString DatabaseManager::getColumnDefinition(const QString &, const QString &) { return ""; }
+QStringList DatabaseManager::getUniqueConstraints(const QString &) { return QStringList(); }
+QStringList DatabaseManager::getIndexes(const QString &) { return QStringList(); }
+QStringList DatabaseManager::getSequences(const QString &) { return QStringList(); }
+QList<DatabaseManager::SequenceInfo> DatabaseManager::getSequenceInfo(const QString &) { return QList<SequenceInfo>(); }
 
-bool DatabaseManager::recordExists(const QString &tableName, const QString &columnName, const QVariant &value)
-{
-    QSqlQuery query(m_db);
-    query.prepare(QString("SELECT COUNT(*) FROM %1 WHERE %2 = :v").arg(escapeIdentifier(tableName)).arg(escapeIdentifier(columnName)));
-    query.bindValue(":v", value);
-    return query.exec() && query.next() && query.value(0).toInt() > 0;
-}
+bool DatabaseManager::createTable(const QString &, const QList<QPair<QString, QString>> &, const QStringList &) { return false; }
+bool DatabaseManager::dropTable(const QString &, bool) { return false; }
+bool DatabaseManager::addColumn(const QString &, const QString &, const QString &, bool, const QVariant &) { return false; }
+bool DatabaseManager::dropColumn(const QString &, const QString &) { return false; }
+bool DatabaseManager::alterColumnType(const QString &, const QString &, const QString &) { return false; }
 
-bool DatabaseManager::checkUniqueValue(const QString &tableName, const QString &columnName, const QVariant &value, int excludeRecordId) { return true; }
-bool DatabaseManager::checkUniqueConstraint(const QString &tableName, const QString &constraintName, const QStringList &columnNames, const QList<QVariant> &values, int excludeRecordId) { return true; }
-QStringList DatabaseManager::getUniqueConstraints(const QString &tableName) { return QStringList(); }
-QStringList DatabaseManager::getIndexes(const QString &tableName) { return QStringList(); }
-QStringList DatabaseManager::getSequences(const QString &tableName) { return QStringList(); }
-QList<DatabaseManager::SequenceInfo> DatabaseManager::getSequenceInfo(const QString &tableName) { return QList<SequenceInfo>(); }
-QString DatabaseManager::getColumnDefinition(const QString &tableName, const QString &columnName) { return ""; }
-
-bool DatabaseManager::createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QStringList &primaryKeys) { return false; }
-bool DatabaseManager::dropTable(const QString &tableName, bool cascade) { return false; }
-bool DatabaseManager::addColumn(const QString &tableName, const QString &columnName, const QString &dataType, bool isNullable, const QVariant &defaultValue) { return false; }
-bool DatabaseManager::dropColumn(const QString &tableName, const QString &columnName) { return false; }
-bool DatabaseManager::alterColumnType(const QString &tableName, const QString &columnName, const QString &newDataType) { return false; }
-
-QString DatabaseManager::escapeIdentifier(const QString &identifier)
-{
-    if (identifier.contains("\"")) return identifier; // Already escaped
-    return QString("\"%1\"").arg(identifier);
+QString DatabaseManager::escapeIdentifier(const QString &i) {
+    if (i.contains("\"")) return i;
+    return QString("\"%1\"").arg(i);
 }
