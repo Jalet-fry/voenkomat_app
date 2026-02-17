@@ -27,7 +27,7 @@ ConfigManager::ConfigManager(const QString &configFile)
 {
     m_configFile = findConfigFilePath(configFile);
     m_settings = new QSettings(m_configFile, QSettings::IniFormat);
-    m_settings->setIniCodec("UTF-8");
+    // In Qt 6, QSettings uses UTF-8 by default for INI files. setIniCodec is removed.
 }
 
 ConfigManager::~ConfigManager() { delete m_settings; }
@@ -67,7 +67,7 @@ bool ConfigManager::createDefaultConfig() const
     QFile file(m_configFile);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream out(&file);
-    out.setCodec("UTF-8");
+    // In Qt 6, QTextStream uses UTF-8 by default. setCodec is removed.
     out << "[Database]\n";
     out << "host=localhost\n";
     out << "port=5432\n";

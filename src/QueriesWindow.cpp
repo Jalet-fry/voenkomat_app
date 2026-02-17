@@ -13,9 +13,14 @@
 #include <QPushButton>
 #include <QApplication>
 #include <QSqlRecord>
-#include <QDesktopWidget>
+#include <QScreen>
 #include <QJsonArray>
 #include <QJsonObject>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QRegularExpression>
+#else
+#include <QRegExp>
+#endif
 #include <algorithm>
 
 QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
@@ -30,7 +35,7 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
             Qt::LeftToRight,
             Qt::AlignCenter,
             size(),
-            qApp->desktop()->availableGeometry()
+            QGuiApplication::primaryScreen()->availableGeometry()
         )
     );
 
@@ -77,12 +82,13 @@ void QueriesWindow::setupUI()
 void QueriesWindow::setupStyles()
 {
     setStyleSheet(
-        "QWidget { background-color: #f5f6fa; }"
-        "QTableWidget { background-color: white; border: 1px solid #dcdde1; border-radius: 6px; gridline-color: #f1f2f6; }"
+        "QWidget { background-color: #f5f6fa; color: #2f3640; }"
+        "QTableWidget { background-color: white; color: black; border: 1px solid #dcdde1; border-radius: 6px; gridline-color: #f1f2f6; }"
+        "QTableWidget::item { color: black; }"
         "QHeaderView::section { background-color: #2f3640; color: white; padding: 8px; font-weight: bold; border: none; }"
-        "QPushButton { background-color: #0097e6; color: white; border-radius: 4px; font-weight: bold; border: none; }"
+        "QPushButton { background-color: #0097e6; color: white; border-radius: 4px; font-weight: bold; border: none; padding: 5px; }"
         "QPushButton:hover { background-color: #00a8ff; }"
-        "QPushButton#runBtn { background-color: #44bd32; }"
+        "QPushButton#runBtn { background-color: #44bd32; color: white; }"
         "QPushButton#runBtn:hover { background-color: #4cd137; }"
     );
 }
@@ -94,8 +100,13 @@ QString QueriesWindow::parseQueryDescription(const QString &sqlText) const
         QString t = line.trimmed();
         if (t.startsWith("--")) {
             QString desc = t.mid(2).trimmed();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            desc.remove(QRegularExpression("^(Запрос|Задание)\\s*\\d+\\.\\d+(\\.\\d+)?[:]?\\s*", QRegularExpression::CaseInsensitiveOption));
+            desc.remove(QRegularExpression("^\\d+\\.\\d+(\\.\\d+)?[:]?\\s*"));
+#else
             desc.remove(QRegExp("^(Запрос|Задание)\\s*\\d+\\.\\d+(\\.\\d+)?[:]?\\s*", Qt::CaseInsensitive));
             desc.remove(QRegExp("^\\d+\\.\\d+(\\.\\d+)?[:]?\\s*"));
+#endif
             if (desc.isEmpty()) continue;
             return desc;
         }
@@ -159,9 +170,24 @@ void QueriesWindow::refreshTable()
     m_table->setRowCount(m_allQueries.size());
     for (int i = 0; i < m_allQueries.size(); ++i) {
         const QueryInfo &q = m_allQueries[i];
-        m_table->setItem(i, 0, new QTableWidgetItem(q.number));
-        m_table->setItem(i, 1, new QTableWidgetItem(q.type));
-        m_table->setItem(i, 2, new QTableWidgetItem(q.description));
+        QTableWidgetItem *numItem = new QTableWidgetItem(q.number);
+        QTableWidgetItem *typeItem = new QTableWidgetItem(q.type);
+        QTableWidgetItem *descItem = new QTableWidgetItem(q.description);
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        numItem->setTextColor(Qt::black);
+        typeItem->setTextColor(Qt::black);
+        descItem->setTextColor(Qt::black);
+#else
+        numItem->setForeground(QBrush(Qt::black));
+        typeItem->setForeground(QBrush(Qt::black));
+        descItem->setForeground(QBrush(Qt::black));
+#endif
+
+        m_table->setItem(i, 0, numItem);
+        m_table->setItem(i, 1, typeItem);
+        m_table->setItem(i, 2, descItem);
+
         QPushButton *runBtn = new QPushButton("Выполнить", this);
         runBtn->setObjectName("runBtn");
         runBtn->setMinimumHeight(30);

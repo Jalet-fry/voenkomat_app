@@ -1,6 +1,17 @@
 #include "CreateTableDialog.h"
 #include <QHeaderView>
 #include <QSpinBox>
+#include <QMessageBox>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QCheckBox>
+#include <QComboBox>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QRegularExpression>
+#else
+#include <QRegExp>
+#endif
 
 CreateTableDialog::CreateTableDialog(QWidget *parent)
     : QDialog(parent)
@@ -181,8 +192,16 @@ void CreateTableDialog::onOkClicked()
     }
     
     // Проверяем валидность имени таблицы (только буквы, цифры, подчеркивания)
+    bool isValid = false;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QRegularExpression nameRegex("^[a-zA-Z_][a-zA-Z0-9_]*$");
+    isValid = nameRegex.match(tableName).hasMatch();
+#else
     QRegExp nameRegex("^[a-zA-Z_][a-zA-Z0-9_]*$");
-    if (!nameRegex.exactMatch(tableName)) {
+    isValid = nameRegex.exactMatch(tableName);
+#endif
+
+    if (!isValid) {
         QMessageBox::warning(this, "Ошибка", 
             "Название таблицы может содержать только буквы, цифры и подчеркивания, и должно начинаться с буквы или подчеркивания");
         return;
@@ -280,4 +299,3 @@ QStringList CreateTableDialog::getPrimaryKeys() const
     
     return primaryKeys;
 }
-

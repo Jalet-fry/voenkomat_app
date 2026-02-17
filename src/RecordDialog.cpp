@@ -7,7 +7,7 @@
 #include <QSqlError>
 #include <QDate>
 #include <QDateTime>
-#include <QRegExp>
+#include <QRegularExpression>
 
 RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent, int recordId)
     : QDialog(parent)
@@ -349,4 +349,3 @@ void RecordDialog::saveRecord()
     if (success && m_dbManager->commitTransaction()) accept();
     else m_dbManager->rollbackTransaction();
 }
-

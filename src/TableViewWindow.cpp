@@ -19,7 +19,12 @@
 #include <QComboBox>
 #include <QScrollArea>
 #include <QGridLayout>
+#include <QTimer>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QRegularExpressionValidator>
+#else
 #include <QRegExpValidator>
+#endif
 #include <QIntValidator>
 #include <QDoubleValidator>
 #include "xlsxdocument.h"
@@ -150,9 +155,10 @@ void TableViewWindow::setupUI()
 void TableViewWindow::setupStyles()
 {
     setStyleSheet(
-        "QWidget { background-color: #dbffff; }"
-        "QTableWidget { background-color: white; border: 2px solid #FFB6C1; border-radius: 5px; }"
-        "QHeaderView::section { background-color: #FFB6C1; padding: 5px; border: 1px solid #FF69B4; font-weight: bold; }"
+        "QWidget { background-color: #dbffff; color: #000000; }"
+        "QTableWidget { background-color: white; border: 2px solid #FFB6C1; border-radius: 5px; color: black; }"
+        "QTableWidget::item { color: black; }"
+        "QHeaderView::section { background-color: #FFB6C1; padding: 5px; border: 1px solid #FF69B4; font-weight: bold; color: black; }"
         "QPushButton { background-color: #5cffda; font-size: 16px; padding: 10px; border-radius: 8px; color: black; border: none; min-height: 40px; }"
         "QPushButton:hover { background-color: #00fac1; }"
         "QPushButton:disabled { background-color: #cccccc; color: #666666; }"
@@ -196,6 +202,12 @@ void TableViewWindow::loadData(const QString &filterClause, const QList<QVariant
             for (int j = 0; j < columns.size(); ++j) {
                 QVariant val = obj[columns[j]].toVariant();
                 QTableWidgetItem *item = new QTableWidgetItem(val.isNull() ? "" : val.toString());
+                item->setTextAlignment(Qt::AlignCenter);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+                item->setTextColor(Qt::black);
+#else
+                item->setForeground(QBrush(Qt::black));
+#endif
                 m_table->setItem(i, j, item);
             }
         }
@@ -233,7 +245,14 @@ void TableViewWindow::loadData(const QString &filterClause, const QList<QVariant
     while (query.next()) {
         m_table->insertRow(rowCount);
         for (int i = 0; i < columns.size(); ++i) {
-            m_table->setItem(rowCount, i, new QTableWidgetItem(query.value(i).toString()));
+            QTableWidgetItem *item = new QTableWidgetItem(query.value(i).toString());
+            item->setTextAlignment(Qt::AlignCenter);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+            item->setTextColor(Qt::black);
+#else
+            item->setForeground(QBrush(Qt::black));
+#endif
+            m_table->setItem(rowCount, i, item);
         }
         rowCount++;
     }
@@ -263,14 +282,13 @@ void TableViewWindow::goBack()
 void TableViewWindow::exportToXlsx()
 {
     // Реализация экспорта в Excel (QXlsx)
-    // ... (код аналогичен вашему исходному)
 }
 
 // Заглушки для методов, которые пока не нужны в HTTP режиме
 void TableViewWindow::addRecord() { if(m_dbManager->isHttpMode()) QMessageBox::information(this, "API", "Добавление через API в разработке"); }
 void TableViewWindow::editRecord() {}
 void TableViewWindow::deleteRecord() {}
-void TableViewWindow::showContextMenu(const QPoint &pos) {}
+void TableViewWindow::showContextMenu(const QPoint &pos) { Q_UNUSED(pos); }
 void TableViewWindow::onFilterChanged() {}
 void TableViewWindow::applyFilters() {}
 void TableViewWindow::clearFilters() {}

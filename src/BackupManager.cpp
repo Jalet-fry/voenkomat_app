@@ -135,7 +135,9 @@ bool BackupManager::exportAllTables()
     }
 
     QTextStream out(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     out.setCodec("UTF-8");
+#endif
     out << QString("-- Полный экспорт базы данных от %1\n\n").arg(timestamp);
 
     foreach (const QString &table, tables) {
@@ -258,7 +260,9 @@ bool BackupManager::exportTable(const QString &tableName, const QString &filePat
     }
 
     QTextStream out(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     out.setCodec("UTF-8");
+#endif
     out << sqlContent;
     file.close();
 
@@ -410,12 +414,22 @@ QString BackupManager::generateTableDML(const QString &tableName)
             QVariant value = query.value(i);
             if (value.isNull()) {
                 values << "NULL";
-            } else if (value.type() == QVariant::Int || value.type() == QVariant::Double) {
-                values << value.toString();
             } else {
-                QString str = value.toString();
-                str.replace("'", "''");
-                values << QString("'%1'").arg(str);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                int typeId = value.userType();
+                if (typeId == QMetaType::Int || typeId == QMetaType::Double || typeId == QMetaType::LongLong) {
+                    values << value.toString();
+                }
+#else
+                if (value.type() == QVariant::Int || value.type() == QVariant::Double || value.type() == QVariant::LongLong) {
+                    values << value.toString();
+                }
+#endif
+                else {
+                    QString str = value.toString();
+                    str.replace("'", "''");
+                    values << QString("'%1'").arg(str);
+                }
             }
         }
         valueRows << QString("(%1)").arg(values.join(", "));
@@ -438,7 +452,9 @@ bool BackupManager::restoreFromBackup(const QString &filePath)
     }
 
     QTextStream in(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     in.setCodec("UTF-8");
+#endif
     QString sqlScript = in.readAll();
     file.close();
 
@@ -519,4 +535,3 @@ bool BackupManager::executeSQLScript(const QString &sqlScript)
 
     return true;
 }
-

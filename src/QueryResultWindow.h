@@ -1,15 +1,16 @@
 #ifndef QUERYRESULTWINDOW_H
 #define QUERYRESULTWINDOW_H
 
-#include <QWidget>
+#include <QDialog>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QStringList>
+#include <QMap>
 
 class DatabaseManager;
 
-class QueryResultWindow : public QWidget
+class QueryResultWindow : public QDialog
 {
     Q_OBJECT
 
@@ -40,4 +41,3 @@ private:
 };
 
 #endif // QUERYRESULTWINDOW_H
-
