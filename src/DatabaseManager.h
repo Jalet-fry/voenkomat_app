@@ -27,6 +27,7 @@ public:
 
     void setHttpMode(bool enabled) { m_httpMode = enabled; }
     bool isHttpMode() const { return m_httpMode; }
+    QString serverUrl() const { return m_serverUrl; }
 
     bool connectToDatabase(const QString &host = "localhost",
                           const QString &port = "5432",
@@ -40,7 +41,10 @@ public:
     QSqlQuery executeQuery(const QString &query, bool *ok = nullptr);
     QJsonArray executeCustomQueryHttp(const QString &sql, bool *ok = nullptr);
 
-    QJsonArray fetchTableDataHttp(const QString &tableName);
+    QJsonArray fetchTableDataHttp(const QString &tableName, const QString &filters = "");
+    bool addRecordHttp(const QString &tableName, const QJsonObject &data);
+    bool updateRecordHttp(const QString &tableName, int recordId, const QJsonObject &data);
+    bool deleteRecordHttp(const QString &tableName, int recordId);
     QStringList getTableList();
 
     QString lastError() const;
@@ -94,7 +98,7 @@ public:
     bool dropColumn(const QString &tableName, const QString &columnName);
     bool alterColumnType(const QString &tableName, const QString &columnName, const QString &newDataType);
 
-    QByteArray sendHttpGetRequest(const QString &url);
+    QByteArray sendHttpRequest(const QString &method, const QString &url, const QByteArray &data = QByteArray());
     static QString escapeIdentifier(const QString &identifier);
     QSqlQuery prepareQuery(const QString &query);
     bool executePreparedQuery(QSqlQuery &query);

@@ -2,16 +2,11 @@
 #define CREATETABLEDIALOG_H
 
 #include <QDialog>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QLineEdit>
-#include <QPushButton>
 #include <QTableWidget>
-#include <QComboBox>
-#include <QCheckBox>
-#include <QLabel>
-#include <QMessageBox>
-#include <QHeaderView>
+#include <QPushButton>
+#include <QStringList>
+#include <QPair>
 
 class CreateTableDialog : public QDialog
 {
@@ -29,12 +24,11 @@ private slots:
     void addColumn();
     void removeColumn();
     void onOkClicked();
-    void onCancelClicked();
 
 private:
     void setupUI();
     void setupStyles();
-    QString getDataTypeString(int dataTypeIndex, const QString &length = "");
+    QString getDataTypeString(int dataTypeIndex, const QString &length);
 
     QLineEdit *m_tableNameEdit;
     QTableWidget *m_columnsTable;
@@ -42,9 +36,7 @@ private:
     QPushButton *m_removeColumnBtn;
     QPushButton *m_okBtn;
     QPushButton *m_cancelBtn;
-    
     QStringList m_dataTypes;
 };
 
 #endif // CREATETABLEDIALOG_H
-

@@ -84,9 +84,8 @@ hell*
 "*Select-String*"
 "*Pattern*"
 
-# Markdown файлы (кроме README.md)
-*.md
 !README.md
+!LABS_COMPLIANCE.md
 !docs/assignment.md
 !docs/LR*_Report.md
 !docs/database_schema.md

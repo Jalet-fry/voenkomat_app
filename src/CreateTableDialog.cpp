@@ -17,7 +17,7 @@ CreateTableDialog::CreateTableDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle("Создание новой таблицы");
-    setMinimumSize(700, 500);
+    setMinimumSize(800, 550);
     
     m_dataTypes << "INTEGER" << "BIGINT" << "SMALLINT" 
                 << "VARCHAR" << "TEXT" << "CHAR"
@@ -29,9 +29,7 @@ CreateTableDialog::CreateTableDialog(QWidget *parent)
     setupStyles();
 }
 
-CreateTableDialog::~CreateTableDialog()
-{
-}
+CreateTableDialog::~CreateTableDialog() {}
 
 void CreateTableDialog::setupUI()
 {
@@ -39,33 +37,32 @@ void CreateTableDialog::setupUI()
     mainLayout->setSpacing(10);
     mainLayout->setContentsMargins(15, 15, 15, 15);
 
-    // Название таблицы
-    QLabel *nameLabel = new QLabel("Название таблицы:", this);
+    QLabel *nameLabel = new QLabel("Название таблицы (на латинице):", this);
     mainLayout->addWidget(nameLabel);
     
     m_tableNameEdit = new QLineEdit(this);
-    m_tableNameEdit->setPlaceholderText("Введите название таблицы (например: test_table)");
+    m_tableNameEdit->setPlaceholderText("Например: test_table");
+    m_tableNameEdit->setStyleSheet("QLineEdit { color: black; background: white; padding: 8px; font-size: 14px; }");
     mainLayout->addWidget(m_tableNameEdit);
 
-    // Таблица колонок
-    QLabel *columnsLabel = new QLabel("Колонки:", this);
-    mainLayout->addWidget(columnsLabel);
-    
     m_columnsTable = new QTableWidget(this);
     m_columnsTable->setColumnCount(5);
     QStringList headers;
     headers << "Название" << "Тип данных" << "Длина" << "NOT NULL" << "Первичный ключ";
     m_columnsTable->setHorizontalHeaderLabels(headers);
     m_columnsTable->horizontalHeader()->setStretchLastSection(true);
-    m_columnsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_columnsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+
+    // ГАРАНТИРУЕМ ВИДИМОСТЬ ТЕКСТА В ТАБЛИЦЕ
+    m_columnsTable->setStyleSheet(
+        "QTableWidget { background-color: white; color: black; gridline-color: #dcdde1; }"
+        "QHeaderView::section { background-color: #f1f2f6; color: black; padding: 5px; font-weight: bold; }"
+    );
+
     mainLayout->addWidget(m_columnsTable);
 
-    // Кнопки управления колонками
     QHBoxLayout *columnButtonsLayout = new QHBoxLayout();
-    m_addColumnBtn = new QPushButton("Добавить колонку", this);
-    m_removeColumnBtn = new QPushButton("Удалить колонку", this);
-    m_removeColumnBtn->setEnabled(false);
+    m_addColumnBtn = new QPushButton(" + Добавить колонку", this);
+    m_removeColumnBtn = new QPushButton(" - Удалить колонку", this);
     columnButtonsLayout->addWidget(m_addColumnBtn);
     columnButtonsLayout->addWidget(m_removeColumnBtn);
     columnButtonsLayout->addStretch();
@@ -73,44 +70,29 @@ void CreateTableDialog::setupUI()
 
     connect(m_addColumnBtn, &QPushButton::clicked, this, &CreateTableDialog::addColumn);
     connect(m_removeColumnBtn, &QPushButton::clicked, this, &CreateTableDialog::removeColumn);
-    connect(m_columnsTable, &QTableWidget::itemSelectionChanged, [this]() {
-        m_removeColumnBtn->setEnabled(m_columnsTable->currentRow() >= 0);
-    });
 
-    // Кнопки OK/Cancel
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
-    m_okBtn = new QPushButton("Создать", this);
+    m_okBtn = new QPushButton("Создать таблицу", this);
     m_cancelBtn = new QPushButton("Отмена", this);
     buttonLayout->addWidget(m_okBtn);
     buttonLayout->addWidget(m_cancelBtn);
     mainLayout->addLayout(buttonLayout);
 
     connect(m_okBtn, &QPushButton::clicked, this, &CreateTableDialog::onOkClicked);
-    connect(m_cancelBtn, &QPushButton::clicked, this, &CreateTableDialog::onCancelClicked);
+    connect(m_cancelBtn, &QPushButton::clicked, this, &CreateTableDialog::reject);
 
-    // Добавляем первую колонку по умолчанию
     addColumn();
 }
 
 void CreateTableDialog::setupStyles()
 {
     setStyleSheet(
-        "QDialog { background-color: #f0f0f0; }"
-        "QLabel { font-weight: bold; color: #333; }"
-        "QLineEdit { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }"
-        "QPushButton {"
-        "    padding: 8px 15px;"
-        "    border-radius: 4px;"
-        "    background-color: #4CAF50;"
-        "    color: white;"
-        "    border: none;"
-        "}"
-        "QPushButton:hover { background-color: #45a049; }"
-        "QPushButton:pressed { background-color: #3d8b40; }"
-        "QPushButton:disabled { background-color: #cccccc; }"
-        "QPushButton#cancelBtn { background-color: #f44336; }"
-        "QPushButton#cancelBtn:hover { background-color: #da190b; }"
+        "QDialog { background-color: #f5f6fa; }"
+        "QLabel { color: #2f3640; font-weight: bold; }"
+        "QPushButton { background-color: #3498db; color: white; border-radius: 4px; padding: 10px; font-weight: bold; min-width: 100px; }"
+        "QPushButton:hover { background-color: #2980b9; }"
+        "QPushButton#cancelBtn { background-color: #e74c3c; }"
     );
     m_cancelBtn->setObjectName("cancelBtn");
 }
@@ -120,182 +102,77 @@ void CreateTableDialog::addColumn()
     int row = m_columnsTable->rowCount();
     m_columnsTable->insertRow(row);
 
-    // Название колонки
-    QTableWidgetItem *nameItem = new QTableWidgetItem("column_" + QString::number(row + 1));
+    QTableWidgetItem *nameItem = new QTableWidgetItem("col_" + QString::number(row + 1));
+    nameItem->setForeground(QBrush(Qt::black));
     m_columnsTable->setItem(row, 0, nameItem);
 
-    // Тип данных
     QComboBox *typeCombo = new QComboBox(this);
     typeCombo->addItems(m_dataTypes);
-    typeCombo->setCurrentText("VARCHAR");
+    typeCombo->setStyleSheet("color: black; background: white;");
     m_columnsTable->setCellWidget(row, 1, typeCombo);
 
-    // Длина (для VARCHAR, CHAR, NUMERIC)
     QSpinBox *lengthSpin = new QSpinBox(this);
-    lengthSpin->setMinimum(1);
-    lengthSpin->setMaximum(10000);
+    lengthSpin->setRange(0, 10000);
     lengthSpin->setValue(255);
-    lengthSpin->setEnabled(true);
+    lengthSpin->setStyleSheet("color: black; background: white;");
     m_columnsTable->setCellWidget(row, 2, lengthSpin);
 
-    // NOT NULL
-    QCheckBox *notNullCheck = new QCheckBox(this);
-    m_columnsTable->setCellWidget(row, 3, notNullCheck);
-
-    // Первичный ключ
-    QCheckBox *pkCheck = new QCheckBox(this);
-    m_columnsTable->setCellWidget(row, 4, pkCheck);
-
-    // Обновляем доступность поля длины в зависимости от типа данных
-    connect(typeCombo, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), [lengthSpin, typeCombo](int index) {
-        QString type = typeCombo->itemText(index);
-        bool enabled = (type == "VARCHAR" || type == "CHAR" || type == "NUMERIC" || type == "DECIMAL");
-        lengthSpin->setEnabled(enabled);
-        if (!enabled) {
-            lengthSpin->setValue(0);
-        }
-    });
+    m_columnsTable->setCellWidget(row, 3, new QCheckBox(this));
+    m_columnsTable->setCellWidget(row, 4, new QCheckBox(this));
 }
 
 void CreateTableDialog::removeColumn()
 {
-    int currentRow = m_columnsTable->currentRow();
-    if (currentRow >= 0) {
-        m_columnsTable->removeRow(currentRow);
-        m_removeColumnBtn->setEnabled(m_columnsTable->rowCount() > 0);
+    if (m_columnsTable->rowCount() > 1) {
+        m_columnsTable->removeRow(m_columnsTable->currentRow() >= 0 ? m_columnsTable->currentRow() : m_columnsTable->rowCount() - 1);
     }
-}
-
-QString CreateTableDialog::getDataTypeString(int dataTypeIndex, const QString &length)
-{
-    if (dataTypeIndex < 0 || dataTypeIndex >= m_dataTypes.size()) {
-        return "TEXT";
-    }
-    
-    QString type = m_dataTypes[dataTypeIndex];
-    
-    // Для типов, требующих длины
-    if ((type == "VARCHAR" || type == "CHAR" || type == "NUMERIC" || type == "DECIMAL") && !length.isEmpty()) {
-        return QString("%1(%2)").arg(type).arg(length);
-    }
-    
-    return type;
 }
 
 void CreateTableDialog::onOkClicked()
 {
     QString tableName = m_tableNameEdit->text().trimmed();
+    if (tableName.isEmpty()) { QMessageBox::warning(this, "Ошибка", "Введите название"); return; }
     
-    if (tableName.isEmpty()) {
-        QMessageBox::warning(this, "Ошибка", "Введите название таблицы");
-        return;
-    }
-    
-    // Проверяем валидность имени таблицы (только буквы, цифры, подчеркивания)
     bool isValid = false;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    QRegularExpression nameRegex("^[a-zA-Z_][a-zA-Z0-9_]*$");
-    isValid = nameRegex.match(tableName).hasMatch();
+    QRegularExpression re("^[a-zA-Z_][a-zA-Z0-9_]*$");
+    isValid = re.match(tableName).hasMatch();
 #else
-    QRegExp nameRegex("^[a-zA-Z_][a-zA-Z0-9_]*$");
-    isValid = nameRegex.exactMatch(tableName);
+    QRegExp re("^[a-zA-Z_][a-zA-Z0-9_]*$");
+    isValid = re.exactMatch(tableName);
 #endif
 
-    if (!isValid) {
-        QMessageBox::warning(this, "Ошибка", 
-            "Название таблицы может содержать только буквы, цифры и подчеркивания, и должно начинаться с буквы или подчеркивания");
-        return;
-    }
-    
-    if (m_columnsTable->rowCount() == 0) {
-        QMessageBox::warning(this, "Ошибка", "Добавьте хотя бы одну колонку");
-        return;
-    }
-    
-    // Проверяем, что есть хотя бы одна колонка с первичным ключом
-    bool hasPrimaryKey = false;
-    for (int i = 0; i < m_columnsTable->rowCount(); ++i) {
-        QCheckBox *pkCheck = qobject_cast<QCheckBox*>(m_columnsTable->cellWidget(i, 4));
-        if (pkCheck && pkCheck->isChecked()) {
-            hasPrimaryKey = true;
-            break;
-        }
-    }
-    
-    if (!hasPrimaryKey) {
-        int ret = QMessageBox::question(this, "Предупреждение", 
-            "Не указан первичный ключ. Продолжить создание таблицы без первичного ключа?",
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if (ret == QMessageBox::No) {
-            return;
-        }
-    }
-    
+    if (!isValid) { QMessageBox::warning(this, "Ошибка", "Недопустимые символы в названии"); return; }
     accept();
 }
 
-void CreateTableDialog::onCancelClicked()
-{
-    reject();
-}
-
-QString CreateTableDialog::getTableName() const
-{
-    return m_tableNameEdit->text().trimmed();
-}
+QString CreateTableDialog::getTableName() const { return m_tableNameEdit->text().trimmed(); }
 
 QList<QPair<QString, QString>> CreateTableDialog::getColumns() const
 {
     QList<QPair<QString, QString>> columns;
-    
     for (int i = 0; i < m_columnsTable->rowCount(); ++i) {
-        QTableWidgetItem *nameItem = m_columnsTable->item(i, 0);
-        if (!nameItem || nameItem->text().trimmed().isEmpty()) {
-            continue;
-        }
+        QString name = m_columnsTable->item(i, 0)->text();
+        QString type = qobject_cast<QComboBox*>(m_columnsTable->cellWidget(i, 1))->currentText();
+        int len = qobject_cast<QSpinBox*>(m_columnsTable->cellWidget(i, 2))->value();
+        bool notNull = qobject_cast<QCheckBox*>(m_columnsTable->cellWidget(i, 3))->isChecked();
         
-        QString columnName = nameItem->text().trimmed();
+        QString fullType = type;
+        if ((type == "VARCHAR" || type == "CHAR") && len > 0) fullType += QString("(%1)").arg(len);
+        if (notNull) fullType += " NOT NULL";
         
-        QComboBox *typeCombo = qobject_cast<QComboBox*>(m_columnsTable->cellWidget(i, 1));
-        QSpinBox *lengthSpin = qobject_cast<QSpinBox*>(m_columnsTable->cellWidget(i, 2));
-        QCheckBox *notNullCheck = qobject_cast<QCheckBox*>(m_columnsTable->cellWidget(i, 3));
-        
-        if (!typeCombo) continue;
-        
-        QString dataType = typeCombo->currentText();
-        
-        // Добавляем длину для соответствующих типов
-        if ((dataType == "VARCHAR" || dataType == "CHAR" || dataType == "NUMERIC" || dataType == "DECIMAL") && lengthSpin) {
-            int length = lengthSpin->value();
-            if (length > 0) {
-                dataType = QString("%1(%2)").arg(dataType).arg(length);
-            }
-        }
-        
-        // Добавляем NOT NULL если установлено
-        if (notNullCheck && notNullCheck->isChecked()) {
-            dataType += " NOT NULL";
-        }
-        
-        columns << qMakePair(columnName, dataType);
+        columns << qMakePair(name, fullType);
     }
-    
     return columns;
 }
 
 QStringList CreateTableDialog::getPrimaryKeys() const
 {
-    QStringList primaryKeys;
-    
+    QStringList pks;
     for (int i = 0; i < m_columnsTable->rowCount(); ++i) {
-        QCheckBox *pkCheck = qobject_cast<QCheckBox*>(m_columnsTable->cellWidget(i, 4));
-        if (pkCheck && pkCheck->isChecked()) {
-            QTableWidgetItem *nameItem = m_columnsTable->item(i, 0);
-            if (nameItem) {
-                primaryKeys << nameItem->text().trimmed();
-            }
+        if (qobject_cast<QCheckBox*>(m_columnsTable->cellWidget(i, 4))->isChecked()) {
+            pks << m_columnsTable->item(i, 0)->text();
         }
     }
-    
-    return primaryKeys;
+    return pks;
 }
