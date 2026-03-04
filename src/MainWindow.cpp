@@ -105,7 +105,7 @@ void MainWindow::setupModernUI()
                       "QPushButton:hover { background-color: #353b48; }";
 
     m_tablesBtn = new QPushButton("📜 Список Таблиц", this);
-    m_queriesBtn = new QPushButton("🔍 Спец. Запросы", this);
+    m_queriesBtn = new QPushButton("🔍 Спец. Запросы (Ctrl+Q)", this);
     m_exportBtn = new QPushButton("📤 Сохранить (Ctrl+S)", this);
     m_helpBtn = new QPushButton("ℹ️ Справка (F1)", this);
     m_switchModeBtn = new QPushButton("⚙️ Перейти в CUA", this);
@@ -144,7 +144,7 @@ void MainWindow::setupModernUI()
     QString dialogStyle =
         "QDialog, QMessageBox, QInputDialog { background-color: #ffffff; border: 2px solid #2f3640; }"
         "QLabel { color: #000000; font-weight: bold; font-size: 14px; min-width: 350px; }"
-        "QLineEdit { background-color: #ffffff; color: #000000; border: 2px solid #2f3640; padding: 8px; }"
+        "QLineEdit { background-color: #ffffff; color: #000000; border: 2px solid #2f3640; padding: 8px; font-size: 14px; }"
         "QPushButton { background-color: #2f3640; color: #ffffff; font-weight: bold; padding: 8px 20px; border-radius: 4px; min-width: 100px; }";
 
     connect(loginBtn, &QPushButton::clicked, this, [this, dialogStyle](){
@@ -173,15 +173,16 @@ void MainWindow::setupModernUI()
         confirm.setText("Вы действительно хотите выйти из режима администратора?");
         confirm.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
         confirm.setIcon(QMessageBox::Question);
+        confirm.setStyleSheet(dialogStyle);
         if(confirm.button(QMessageBox::Yes)) confirm.button(QMessageBox::Yes)->setText("Да, выйти");
         if(confirm.button(QMessageBox::No)) confirm.button(QMessageBox::No)->setText("Отмена");
-        confirm.setStyleSheet(dialogStyle);
+
         if (confirm.exec() == QMessageBox::Yes) {
             m_dbManager->setAuthToken("");
             updateConnectionStatus();
             if(m_isClassicUI) viewActiveTable();
             QMessageBox msg(this); msg.setStyleSheet(dialogStyle);
-            msg.setWindowTitle("Статус"); msg.setText("Авторизация сброшена. Вы перешли в режим Guest."); msg.setIcon(QMessageBox::Information); msg.exec();
+            msg.setWindowTitle("Статус"); msg.setText("Авторизация сброшена. Вы перешли в режим ПОЛЬЗОВАТЕЛЯ."); msg.setIcon(QMessageBox::Information); msg.exec();
         }
     });
 }
@@ -219,7 +220,15 @@ void MainWindow::setupClassicUI()
     m_filterValueEdit = new QLineEdit(this);
     m_applyFilterBtn = new QPushButton("Apply", this);
     m_applyFilterBtn->setFixedWidth(80);
+
+    // Настройка фокуса для навигации Tab
+    m_filterColumnCombo->setFocusPolicy(Qt::StrongFocus);
+    m_filterValueEdit->setFocusPolicy(Qt::StrongFocus);
+    m_applyFilterBtn->setFocusPolicy(Qt::StrongFocus);
+
     connect(m_applyFilterBtn, &QPushButton::clicked, this, &MainWindow::applyFilter);
+    connect(m_filterValueEdit, &QLineEdit::returnPressed, this, &MainWindow::applyFilter);
+
     fL->addWidget(new QLabel("Field:")); fL->addWidget(m_filterColumnCombo);
     fL->addWidget(m_filterValueEdit); fL->addWidget(m_applyFilterBtn);
     m_layout->addLayout(fL);
@@ -230,7 +239,13 @@ void MainWindow::setupClassicUI()
     m_mainTable = new QTableWidget(this);
     m_mainTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_mainTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_mainTable->setFocusPolicy(Qt::StrongFocus);
     m_layout->addWidget(m_mainTable);
+
+    // Установка порядка перехода Tab
+    setTabOrder(m_filterColumnCombo, m_filterValueEdit);
+    setTabOrder(m_filterValueEdit, m_applyFilterBtn);
+    setTabOrder(m_applyFilterBtn, m_mainTable);
 
     m_classicFooter = new QLabel(" F1-Help | Alt+F/T/O-Menu | Ctrl+A/V/D/U/S/B/E-Actions ", this);
     m_layout->addWidget(m_classicFooter);
@@ -287,7 +302,7 @@ void MainWindow::showHelp() {
         "<div style='background-color: #ffffff; color: #000000; padding: 15px; font-family: Segoe UI;'>"
         "<h2>Краткое руководство (Лаб №1 и №2)</h2>"
         "<p>Программа поддерживает стандарт <b>Common User Access (CUA)</b>. Основные операции:</p>"
-        "<h3>Горячие клавиши (Hotkeys):</h3>"
+        "<h3>Горячие клавиши:</h3>"
         "<table border='1' cellpadding='5' style='border-collapse: collapse; width: 100%;'>"
         "<tr><td><b>Ctrl + A</b></td><td>Add: Добавить запись</td></tr>"
         "<tr><td><b>Ctrl + V</b></td><td>View: Обновить таблицу</td></tr>"
@@ -409,7 +424,9 @@ void MainWindow::setupStyles() {
             "QMenuBar::item:selected { background-color: #2f3640; color: #ffffff; }"
             "QMenu { background-color: #ffffff; color: #000000; border: 1px solid #2f3640; }"
             "QMenu::item:selected { background-color: #2f3640; color: #ffffff; }"
-            "QLabel { color: #000000; font-family: 'Segoe UI'; }"
+            "QLabel { color: #000000; font-family: 'Segoe UI'; font-weight: bold; }"
+            "QLineEdit { background-color: #ffffff; color: #000000; border: 1px solid #2f3640; padding: 2px; }"
+            "QComboBox { background-color: #ffffff; color: #000000; border: 1px solid #2f3640; selection-background-color: #2f3640; }"
             "QTableWidget { background-color: #ffffff; color: #000000; border: 1px solid #dcdde1; selection-background-color: #2f3640; selection-color: #ffffff; }"
             "QPushButton { background-color: #f5f6fa; color: #000000; border: 1px solid #2f3640; font-weight: bold; padding: 4px; }"
         );
