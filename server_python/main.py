@@ -1,3 +1,8 @@
+# TODO: [REVIEW] OK.
+# TODO: [SECURITY] Manual SQL escaping in escape_val() is risky. Consider using psycopg2 parameters.
+# TODO: [REQS] No check for LOOKUP_TABLES access rights in add_rec/update_rec/del_rec. 
+#       Superuser check (admin token) should be required for these tables.
+
 import os
 from fastapi import FastAPI, HTTPException, Query, Body, Header
 from fastapi.middleware.cors import CORSMiddleware

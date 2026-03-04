@@ -1,3 +1,7 @@
+// TODO: [REVIEW] OK.
+// TODO: [UI] Contrast is good (black on white).
+// TODO: [CUA] check if it should be setFixedSize as per LABS_COMPLIANCE.md.
+
 #include "CreateTableDialog.h"
 #include <QHeaderView>
 #include <QSpinBox>

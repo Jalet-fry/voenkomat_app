@@ -1,3 +1,7 @@
+# TODO: [REVIEW] OK.
+# TODO: [NOTE] TRUNCATE list contains 'conscripts_events' which is not in create_schema.sql.
+# TODO: [NOTE] 200 conscripts are generated as requested.
+
 import psycopg2
 import random
 from faker import Faker

@@ -1,3 +1,8 @@
+// TODO: [REVIEW] OK.
+// TODO: [FIX] connectToDatabase in HTTP mode: targetHost calculation might be redundant if user enters IP.
+// TODO: [FIX] executeQuery in HTTP mode returns an empty QSqlQuery, which might cause crashes if caller expects a valid record.
+// TODO: [FIX] beginTransaction/commitTransaction/rollbackTransaction always return true in HTTP mode.
+
 #include "DatabaseManager.h"
 #include <QDebug>
 #include <QSqlDriver>

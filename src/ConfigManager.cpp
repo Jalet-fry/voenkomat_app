@@ -1,3 +1,4 @@
+// TODO: [REVIEW] OK.
 #include "ConfigManager.h"
 #include <QFile>
 #include <QDir>
@@ -9,17 +10,12 @@
 QString ConfigManager::findConfigFilePath(const QString &configFile) const
 {
     if (QDir::isAbsolutePath(configFile)) return configFile;
-    
     QStringList possiblePaths;
     possiblePaths << QDir(QApplication::applicationDirPath()).absoluteFilePath(configFile);
     possiblePaths << QDir::current().absoluteFilePath(configFile);
-    
     QDir appDirParent(QApplication::applicationDirPath());
     if (appDirParent.cdUp()) possiblePaths << appDirParent.absoluteFilePath(configFile);
-    
-    foreach (const QString &path, possiblePaths) {
-        if (QFile::exists(path)) return path;
-    }
+    foreach (const QString &path, possiblePaths) if (QFile::exists(path)) return path;
     return QDir(QApplication::applicationDirPath()).absoluteFilePath(configFile);
 }
 
@@ -27,7 +23,6 @@ ConfigManager::ConfigManager(const QString &configFile)
 {
     m_configFile = findConfigFilePath(configFile);
     m_settings = new QSettings(m_configFile, QSettings::IniFormat);
-    // In Qt 6, QSettings uses UTF-8 by default for INI files. setIniCodec is removed.
 }
 
 ConfigManager::~ConfigManager() { delete m_settings; }
@@ -44,15 +39,11 @@ QString ConfigManager::getDatabasePassword() const
     return readValue("Database/password", "");
 }
 
-bool ConfigManager::isHttpMode() const
-{
-    return m_settings->value("Mode/use_http", false).toBool();
-}
+bool ConfigManager::isHttpMode() const { return m_settings->value("Mode/use_http", false).toBool(); }
+void ConfigManager::setHttpMode(bool enabled) { writeValue("Mode/use_http", enabled); }
 
-void ConfigManager::setHttpMode(bool enabled)
-{
-    writeValue("Mode/use_http", enabled);
-}
+bool ConfigManager::isClassicUI() const { return m_settings->value("Mode/classic_ui", true).toBool(); }
+void ConfigManager::setClassicUI(bool enabled) { writeValue("Mode/classic_ui", enabled); }
 
 void ConfigManager::setDatabaseHost(const QString &host) { writeValue("Database/host", host); }
 void ConfigManager::setDatabasePort(const QString &port) { writeValue("Database/port", port); }
@@ -67,14 +58,8 @@ bool ConfigManager::createDefaultConfig() const
     QFile file(m_configFile);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream out(&file);
-    // In Qt 6, QTextStream uses UTF-8 by default. setCodec is removed.
-    out << "[Database]\n";
-    out << "host=localhost\n";
-    out << "port=5432\n";
-    out << "database=military_db\n";
-    out << "username=postgres\n\n";
-    out << "[Mode]\n";
-    out << "use_http=false\n";
+    out << "[Database]\n" << "host=localhost\n" << "port=5432\n" << "database=military_db\n" << "username=postgres\n\n"
+        << "[Mode]\n" << "use_http=false\n" << "classic_ui=true\n";
     file.close();
     return true;
 }

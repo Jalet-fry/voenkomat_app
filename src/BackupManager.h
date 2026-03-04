@@ -1,3 +1,4 @@
+// TODO: [REVIEW] OK.
 #ifndef BACKUPMANAGER_H
 #define BACKUPMANAGER_H
 
@@ -41,4 +42,3 @@ private:
 };
 
 #endif // BACKUPMANAGER_H
-

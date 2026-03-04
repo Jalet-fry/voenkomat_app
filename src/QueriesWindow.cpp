@@ -1,7 +1,7 @@
 #include "QueriesWindow.h"
 #include "QueryResultWindow.h"
 #include "EmbeddedQueries.h"
-#include "DbConstants.h"
+#include "ConfigManager.h"
 #include <QLabel>
 #include <QMessageBox>
 #include <QFile>
@@ -13,9 +13,8 @@
 #include <QPushButton>
 #include <QApplication>
 #include <QSqlRecord>
-#include <QScreen>
-#include <QJsonArray>
-#include <QJsonObject>
+#include <QKeyEvent>
+#include <QMenuBar>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QRegularExpression>
 #else
@@ -27,17 +26,11 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     : QWidget(parent)
     , m_dbManager(dbManager)
 {
-    setWindowTitle("Управление запросами (Military DB)");
-    resize(1000, 750);
+    ConfigManager config("config.ini");
+    m_isClassicUI = config.isClassicUI();
 
-    setGeometry(
-        QStyle::alignedRect(
-            Qt::LeftToRight,
-            Qt::AlignCenter,
-            size(),
-            QGuiApplication::primaryScreen()->availableGeometry()
-        )
-    );
+    setWindowTitle(m_isClassicUI ? "Запросы (CUA)" : "Управление запросами");
+    if (m_isClassicUI) setFixedSize(900, 600); else resize(1000, 750);
 
     setupUI();
     setupStyles();
@@ -49,172 +42,124 @@ QueriesWindow::~QueriesWindow() {}
 void QueriesWindow::setupUI()
 {
     m_layout = new QVBoxLayout(this);
+    if (m_isClassicUI) setupClassicUI(); else setupModernUI();
+
+    m_table = new QTableWidget(this);
+    m_table->setColumnCount(m_isClassicUI ? 3 : 4);
+    QStringList headers;
+    headers << "Номер" << "Лаб." << "Описание запроса";
+    if (!m_isClassicUI) headers << "Действие";
+    m_table->setHorizontalHeaderLabels(headers);
+
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_table->setAlternatingRowColors(true);
+    m_table->horizontalHeader()->setStretchLastSection(true);
+
+    connect(m_table, &QTableWidget::itemDoubleClicked, this, &QueriesWindow::runSelectedQuery);
+    m_layout->addWidget(m_table);
+
+    if (m_isClassicUI) {
+        m_footerHint = new QLabel(" [Enter] Выполнить | [F3] Фильтр | [Esc] Назад ", this);
+        m_footerHint->setStyleSheet("background-color: #000080; color: white; font-family: 'Consolas'; font-size: 11px;");
+        m_layout->addWidget(m_footerHint);
+    }
+}
+
+void QueriesWindow::setupModernUI()
+{
     m_layout->setContentsMargins(20, 20, 20, 20);
     m_layout->setSpacing(15);
 
-    QLabel *title = new QLabel("Список всех SQL запросов (Лабораторные 5 и 6)", this);
+    QLabel *title = new QLabel("Список всех SQL запросов", this);
     title->setAlignment(Qt::AlignCenter);
     title->setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;");
     m_layout->addWidget(title);
 
-    m_table = new QTableWidget(this);
-    m_table->setColumnCount(4);
-    m_table->setHorizontalHeaderLabels(QStringList() << "Номер" << "Лаб." << "Описание запроса" << "Действие");
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setAlternatingRowColors(true);
-
-    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
-    m_table->setColumnWidth(0, 80);
-    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
-    m_table->setColumnWidth(1, 80);
-    m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
-    m_table->setColumnWidth(3, 130);
-
-    m_layout->addWidget(m_table);
-
-    QPushButton *backBtn = new QPushButton("Назад в меню", this);
-    backBtn->setMinimumHeight(45);
-    connect(backBtn, &QPushButton::clicked, this, &QueriesWindow::goBack);
-    m_layout->addWidget(backBtn);
+    QHBoxLayout *filterL = new QHBoxLayout();
+    m_searchEdit = new QLineEdit(this);
+    m_searchEdit->setPlaceholderText("Поиск по описанию...");
+    connect(m_searchEdit, &QLineEdit::textChanged, this, &QueriesWindow::onFilterChanged);
+    filterL->addWidget(new QLabel("Поиск:"));
+    filterL->addWidget(m_searchEdit);
+    m_layout->addLayout(filterL);
 }
 
-void QueriesWindow::setupStyles()
+void QueriesWindow::setupClassicUI()
 {
-    setStyleSheet(
-        "QWidget { background-color: #f5f6fa; color: #2f3640; }"
-        "QTableWidget { background-color: white; color: black; border: 1px solid #dcdde1; border-radius: 6px; gridline-color: #f1f2f6; }"
-        "QTableWidget::item { color: black; }"
-        "QHeaderView::section { background-color: #2f3640; color: white; padding: 8px; font-weight: bold; border: none; }"
-        "QPushButton { background-color: #0097e6; color: white; border-radius: 4px; font-weight: bold; border: none; padding: 5px; }"
-        "QPushButton:hover { background-color: #00a8ff; }"
-        "QPushButton#runBtn { background-color: #44bd32; color: white; }"
-        "QPushButton#runBtn:hover { background-color: #4cd137; }"
-    );
+    m_layout->setContentsMargins(2, 2, 2, 2);
+    m_layout->setSpacing(0);
+
+    m_menuBar = new QMenuBar(this);
+    QMenu *m = m_menuBar->addMenu("&Запрос");
+    m->addAction("Выполнить (Enter)", this, &QueriesWindow::runSelectedQuery);
+    m->addAction("Назад (Esc)", this, &QueriesWindow::goBack);
+
+    m_layout->setMenuBar(m_menuBar);
 }
 
-QString QueriesWindow::parseQueryDescription(const QString &sqlText) const
+void QueriesWindow::keyPressEvent(QKeyEvent *event)
 {
-    QStringList lines = sqlText.split('\n');
-    foreach(QString line, lines) {
-        QString t = line.trimmed();
-        if (t.startsWith("--")) {
-            QString desc = t.mid(2).trimmed();
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-            desc.remove(QRegularExpression("^(Запрос|Задание)\\s*\\d+\\.\\d+(\\.\\d+)?[:]?\\s*", QRegularExpression::CaseInsensitiveOption));
-            desc.remove(QRegularExpression("^\\d+\\.\\d+(\\.\\d+)?[:]?\\s*"));
-#else
-            desc.remove(QRegExp("^(Запрос|Задание)\\s*\\d+\\.\\d+(\\.\\d+)?[:]?\\s*", Qt::CaseInsensitive));
-            desc.remove(QRegExp("^\\d+\\.\\d+(\\.\\d+)?[:]?\\s*"));
-#endif
-            if (desc.isEmpty()) continue;
-            return desc;
-        }
-    }
-    return "Описание отсутствует";
+    if (event->key() == Qt::Key_Escape) { goBack(); return; }
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { runSelectedQuery(); return; }
+    QWidget::keyPressEvent(event);
 }
+
+void QueriesWindow::onFilterChanged() { refreshTable(); }
 
 void QueriesWindow::loadQueries()
 {
-    m_allQueries.clear();
     m_allQueries = getEmbeddedQueries();
-
-    QDir baseDir(qApp->applicationDirPath());
-    baseDir.cdUp();
-    QString queriesPath = baseDir.absoluteFilePath("resources/queries");
-
-    QStringList subDirs; subDirs << "Lab5" << "Lab6";
-    foreach(const QString &sub, subDirs) {
-        QDir dir(queriesPath + "/" + sub);
-        if (!dir.exists()) continue;
-
-        foreach(const QFileInfo &fi, dir.entryInfoList(QStringList() << "*.sql", QDir::Files)) {
-            bool found = false;
-            for(int i=0; i < m_allQueries.size(); ++i) {
-                if(m_allQueries[i].number == fi.completeBaseName()) {
-                    found = true;
-                    break;
-                }
-            }
-            if(!found) {
-                QFile f(fi.absoluteFilePath());
-                if(f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                    QString sql = QTextStream(&f).readAll();
-                    QueryInfo qi;
-                    qi.number = fi.completeBaseName();
-                    qi.description = parseQueryDescription(sql);
-                    qi.sqlText = sql;
-                    qi.type = sub;
-                    m_allQueries.append(qi);
-                }
-            }
-        }
-    }
-
-    std::sort(m_allQueries.begin(), m_allQueries.end(), [](const QueryInfo &a, const QueryInfo &b) {
-        QStringList aParts = a.number.split('.');
-        QStringList bParts = b.number.split('.');
-        for (int i = 0; i < qMin(aParts.size(), bParts.size()); ++i) {
-            int aVal = aParts[i].toInt();
-            int bVal = bParts[i].toInt();
-            if (aVal != bVal) return aVal < bVal;
-        }
-        return aParts.size() < bParts.size();
-    });
-
     refreshTable();
 }
 
 void QueriesWindow::refreshTable()
 {
-    m_table->setRowCount(m_allQueries.size());
-    for (int i = 0; i < m_allQueries.size(); ++i) {
-        const QueryInfo &q = m_allQueries[i];
-        QTableWidgetItem *numItem = new QTableWidgetItem(q.number);
-        QTableWidgetItem *typeItem = new QTableWidgetItem(q.type);
-        QTableWidgetItem *descItem = new QTableWidgetItem(q.description);
+    m_table->setRowCount(0);
+    QString searchText = m_searchEdit ? m_searchEdit->text().toLower() : "";
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        numItem->setTextColor(Qt::black);
-        typeItem->setTextColor(Qt::black);
-        descItem->setTextColor(Qt::black);
-#else
-        numItem->setForeground(QBrush(Qt::black));
-        typeItem->setForeground(QBrush(Qt::black));
-        descItem->setForeground(QBrush(Qt::black));
-#endif
+    int row = 0;
+    for (const auto &q : m_allQueries) {
+        if (!searchText.isEmpty() && !q.description.toLower().contains(searchText)) continue;
 
-        m_table->setItem(i, 0, numItem);
-        m_table->setItem(i, 1, typeItem);
-        m_table->setItem(i, 2, descItem);
+        m_table->insertRow(row);
+        m_table->setItem(row, 0, new QTableWidgetItem(q.number));
+        m_table->setItem(row, 1, new QTableWidgetItem(q.type));
+        m_table->setItem(row, 2, new QTableWidgetItem(q.description));
 
-        QPushButton *runBtn = new QPushButton("Выполнить", this);
-        runBtn->setObjectName("runBtn");
-        runBtn->setMinimumHeight(30);
-        connect(runBtn, &QPushButton::clicked, [this, q]() { runQuery(q); });
-        m_table->setCellWidget(i, 3, runBtn);
+        if (!m_isClassicUI) {
+            QPushButton *btn = new QPushButton("Выполнить", this);
+            btn->setStyleSheet("background-color: #44bd32; color: white;");
+            connect(btn, &QPushButton::clicked, this, &QueriesWindow::runSelectedQuery);
+            m_table->setCellWidget(row, 3, btn);
+        }
+
+        for(int c=0; c<m_table->columnCount(); ++c) {
+            if(m_table->item(row, c)) m_table->item(row, c)->setForeground(QBrush(Qt::black));
+        }
+        row++;
     }
+    m_table->resizeColumnsToContents();
 }
 
-void QueriesWindow::runQuery(const QueryInfo &queryInfo)
+void QueriesWindow::runSelectedQuery()
 {
-    if (!m_dbManager->isConnected()) return;
+    int r = m_table->currentRow();
+    if (r < 0) return;
+
+    QString num = m_table->item(r, 0)->text();
+    QueryInfo target;
+    for(const auto &q : m_allQueries) if(q.number == num) { target = q; break; }
+
+    if (target.sqlText.isEmpty()) return;
 
     QStringList cols;
     QList<QList<QVariant>> rows;
 
     if (m_dbManager->isHttpMode()) {
         bool ok;
-        QJsonArray data = m_dbManager->executeCustomQueryHttp(queryInfo.sqlText, &ok);
-        if (!ok) {
-            QMessageBox::critical(this, "Ошибка API", "Запрос не выполнен:\n" + m_dbManager->lastError());
-            return;
-        }
-        if (data.isEmpty()) {
-            QMessageBox::information(this, "Результат", "Запрос выполнен, данных нет.");
-            return;
-        }
-        // Получаем колонки из первого объекта
+        QJsonArray data = m_dbManager->executeCustomQueryHttp(target.sqlText, &ok);
+        if (data.isEmpty()) return;
         QJsonObject first = data[0].toObject();
         cols = first.keys();
         for (int i = 0; i < data.size(); ++i) {
@@ -225,11 +170,7 @@ void QueriesWindow::runQuery(const QueryInfo &queryInfo)
         }
     } else {
         bool ok;
-        QSqlQuery query = m_dbManager->executeQuery(queryInfo.sqlText, &ok);
-        if (!ok) {
-            QMessageBox::critical(this, "Ошибка SQL", "Запрос не выполнен:\n" + m_dbManager->lastError());
-            return;
-        }
+        QSqlQuery query = m_dbManager->executeQuery(target.sqlText, &ok);
         QSqlRecord rec = query.record();
         for (int i = 0; i < rec.count(); ++i) cols << rec.fieldName(i);
         while (query.next()) {
@@ -239,17 +180,18 @@ void QueriesWindow::runQuery(const QueryInfo &queryInfo)
         }
     }
 
-    QueryResultWindow *res = new QueryResultWindow(queryInfo.number + ": " + queryInfo.description, cols, rows, m_dbManager, this);
-    res->resize(900, 600);
+    QueryResultWindow *res = new QueryResultWindow(target.number + ": " + target.description, cols, rows, m_dbManager, this);
     res->show();
 }
 
 void QueriesWindow::goBack() { hide(); }
-void QueriesWindow::addNewQuery() {}
-void QueriesWindow::showQueryContextMenu(const QPoint &) {}
-void QueriesWindow::deleteQuery(const QueryInfo &) {}
-void QueriesWindow::backupQuery(const QueryInfo &) {}
-void QueriesWindow::onTableDoubleClicked(const QModelIndex &) {}
-void QueriesWindow::onFilterChanged() {}
-void QueriesWindow::onSearchTextChanged(const QString &) {}
-void QueriesWindow::loadQueriesFromFolder(const QString &, const QString &) {}
+
+void QueriesWindow::setupStyles() {
+    if (m_isClassicUI) {
+        setStyleSheet("QWidget { background-color: #c0c0c0; color: black; }"
+                      "QTableWidget { background-color: white; color: black; border: 2px inset gray; font-family: 'Consolas'; }"
+                      "QHeaderView::section { background-color: #c0c0c0; color: black; border: 1px solid black; }");
+    } else {
+        setStyleSheet("QPushButton { background-color: #0097e6; color: white; border-radius: 4px; padding: 5px; }");
+    }
+}

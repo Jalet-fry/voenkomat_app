@@ -1,3 +1,7 @@
+// TODO: [REVIEW] OK.
+// TODO: [NOTE] Implementation allows adding/removing columns.
+// TODO: [FIX] Updating column types or nullability for existing columns is disabled.
+
 #include "EditTableStructureDialog.h"
 #include <QSpinBox>
 #include <QCheckBox>
@@ -338,4 +342,3 @@ void EditTableStructureDialog::onCancelClicked()
 {
     reject();
 }
-

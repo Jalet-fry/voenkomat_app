@@ -1,5 +1,13 @@
+# TODO: [REVIEW] OK.
+# TODO: [NOTE] Implementation uses JSON for values in BerkeleyDB (Key-Value Core API).
+# TODO: [FIX] Added automatic cleanup of old database files and advanced JSON encoding.
+
 import json
 import os
+import shutil
+from datetime import datetime, date, time
+from decimal import Decimal
+
 try:
     from bsddb3 import db
 except ImportError:
@@ -10,12 +18,34 @@ except ImportError:
         print("Установите её командой: pip install bsddb3")
         exit(1)
 
-from database import execute_query, get_db_connection
+from database import execute_query
+
+class NoSQLJSONEncoder(json.JSONEncoder):
+    """Кастомный JSON encoder для корректного переноса типов данных из PostgreSQL"""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date, time)):
+            return obj.isoformat()
+        elif isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, bytes):
+            return obj.decode('utf-8', errors='ignore')
+        return super().default(obj)
 
 def convert():
-    print("--- Запуск конвертации PostgreSQL -> BerkeleyDB ---")
+    print("--- Запуск конвертации PostgreSQL -> BerkeleyDB (NoSQL) ---")
     
-    # 1. Получаем список всех таблиц в схеме public
+    nosql_dir = "nosql_db"
+    
+    # 1. Очистка и создание папки
+    if os.path.exists(nosql_dir):
+        print(f"Очистка старых данных в {nosql_dir}...")
+        for file in os.listdir(nosql_dir):
+            if file.endswith(".db"):
+                os.remove(os.path.join(nosql_dir, file))
+    else:
+        os.makedirs(nosql_dir)
+
+    # 2. Получаем список всех таблиц
     tables_query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
     tables_res = execute_query(tables_query)
     tables = [row['table_name'] for row in tables_res]
@@ -24,61 +54,50 @@ def convert():
         print("Таблиц в базе данных не найдено.")
         return
 
-    # Создаем папку для NoSQL баз, если её нет
-    if not os.path.exists("nosql_db"):
-        os.makedirs("nosql_db")
-
     for table_name in tables:
         print(f"Обработка таблицы: {table_name}...")
         
-        # 2. Получаем названия столбцов
-        cols_query = f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}' ORDER BY ordinal_position"
-        cols_res = execute_query(cols_query)
-        columns = [row['column_name'] for row in cols_res]
-        
-        # Находим первичный ключ (для формирования ключа в BDB)
+        # 3. Находим первичный ключ для формирования ключа BerkeleyDB
         pk_query = f"""
             SELECT kcu.column_name 
             FROM information_schema.table_constraints tc 
             JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name 
             WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{table_name}'
+            ORDER BY kcu.ordinal_position
         """
         pk_res = execute_query(pk_query)
         pk_cols = [row['column_name'] for row in pk_res]
         
-        # 3. Получаем данные
-        data = execute_query(f"SELECT * FROM {table_name}")
+        # 4. Получаем данные
+        data = execute_query(f"SELECT * FROM public.{table_name}")
         
-        # 4. Создаем базу BerkeleyDB
-        db_path = os.path.join("nosql_db", f"{table_name}.db")
+        # 5. Создаем базу BerkeleyDB (HASH-таблица)
+        db_path = os.path.join(nosql_dir, f"{table_name}.db")
         bdb = db.DB()
         bdb.open(db_path, None, db.DB_HASH, db.DB_CREATE)
 
         count = 0
         for row in data:
-            # Формируем КЛЮЧ
-            if len(pk_cols) == 1:
-                # Обычный ключ (ID)
-                key = str(row[pk_cols[0]])
-            elif len(pk_cols) > 1:
-                # Составной ключ (для Many-to-Many) типа {id1}_{id2}
+            # Формируем КЛЮЧ (ID или составной)
+            if pk_cols:
                 key = "_".join([str(row[c]) for c in pk_cols])
             else:
-                # Если ПК нет (не должно быть по схеме), используем первую колонку
-                key = str(row[columns[0]])
+                # Если ПК нет (не по схеме), используем первый столбец
+                key = str(next(iter(row.values())))
 
-            # Формируем ЗНАЧЕНИЕ (JSON без полей первичного ключа, как в ТЗ)
-            value_dict = {k: str(v) if v is not None else None for k, v in row.items() if k not in pk_cols}
-            value_json = json.dumps(value_dict, ensure_ascii=False)
+            # Формируем ЗНАЧЕНИЕ (JSON без полей первичного ключа)
+            # Мы используем кастомный энкодер для дат и чисел
+            value_dict = {k: v for k, v in row.items() if k not in pk_cols}
+            value_json = json.dumps(value_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
 
-            # Записываем в BerkeleyDB (нужны байты)
+            # Записываем байты
             bdb.put(key.encode('utf-8'), value_json.encode('utf-8'))
             count += 1
 
         bdb.close()
         print(f"  Успешно: {count} записей перенесено в {db_path}")
 
-    print("\n--- Конвертация полностью завершена! ---")
+    print("\n--- Конвертация завершена! Данные сохранены в Key-Value формате. ---")
 
 if __name__ == "__main__":
     convert()

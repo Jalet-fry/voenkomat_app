@@ -1,3 +1,6 @@
+# TODO: [REVIEW] OK.
+# TODO: [NOTE] get_db_config reads password from config.ini or PGPASSWORD. System pgpass.conf is also supported via libpq.
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os

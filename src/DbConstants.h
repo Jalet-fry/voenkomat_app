@@ -1,3 +1,4 @@
+// TODO: [REVIEW] OK. Matches create_schema.sql.
 #ifndef DBCONSTANTS_H
 #define DBCONSTANTS_H
 

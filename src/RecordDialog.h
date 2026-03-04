@@ -7,6 +7,7 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QMap>
+#include <QDialogButtonBox>
 #include "DatabaseManager.h"
 
 class RecordDialog : public QDialog
@@ -17,28 +18,32 @@ public:
     explicit RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent = nullptr, int recordId = -1);
     ~RecordDialog();
 
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+
 private slots:
     void saveRecord();
 
 private:
     void setupUI();
+    void setupModernUI();
+    void setupClassicUI();
+    void setupStyles();
     void loadRecordData();
     QString getDisplayName(const QString &fieldName) const;
-    bool validateRecord(QString &errorMessage);
-    QVariant formatValueForSQL(const QString &columnName, const QString &value, const QString &dataType);
-    bool isValidDate(const QString &dateStr);
-    bool isValidInteger(const QString &value);
-    bool isValidTimestamp(const QString &timestampStr);
 
     DatabaseManager *m_dbManager;
     QString m_tableName;
     int m_recordId;
+    bool m_isClassicUI;
+
     QStringList m_columns;
     QMap<QString, QLineEdit*> m_fields;
     QMap<QString, QString> m_fieldDisplayNames;
-    QList<DatabaseManager::ColumnDetail> m_columnDetails;
     QList<DatabaseManager::ForeignKeyInfo> m_foreignKeys;
+
+    QVBoxLayout *m_layout;
+    QDialogButtonBox *m_buttonBox;
 };
 
 #endif // RECORDDIALOG_H
-

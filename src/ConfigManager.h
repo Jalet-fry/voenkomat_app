@@ -1,3 +1,4 @@
+// TODO: [REVIEW] OK.
 #ifndef CONFIGMANAGER_H
 #define CONFIGMANAGER_H
 
@@ -17,10 +18,14 @@ public:
     QString getDatabaseUsername() const;
     QString getDatabasePassword() const;
 
-    // Параметры режима работы
+    // Параметры режима работы (API vs SQL)
     bool isHttpMode() const;
     void setHttpMode(bool enabled);
-    
+
+    // ПАРАМЕТР ИНТЕРФЕЙСА (Modern vs Classic CUA)
+    bool isClassicUI() const;
+    void setClassicUI(bool enabled);
+
     // Сохранение параметров подключения к БД
     void setDatabaseHost(const QString &host);
     void setDatabasePort(const QString &port);
