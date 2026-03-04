@@ -172,13 +172,14 @@ void MainWindow::setupClassicUI()
     m_applyFilterBtn = new QPushButton("Apply", this);
     m_applyFilterBtn->setFixedWidth(100);
     connect(m_applyFilterBtn, &QPushButton::clicked, this, &MainWindow::applyFilter);
+    connect(m_filterValueEdit, &QLineEdit::returnPressed, this, &MainWindow::applyFilter);
 
     fL->addWidget(new QLabel("Field:")); fL->addWidget(m_filterColumnCombo);
     fL->addWidget(m_filterValueEdit); fL->addWidget(m_applyFilterBtn);
     m_layout->addLayout(fL);
 
     m_activeTableLabel = new QLabel("Active Table: [ " + m_activeTable.toUpper() + " ]", this);
-    m_activeTableLabel->setStyleSheet("background: #000080; color: #ffff00; padding: 3px; font-weight: bold;");
+    m_activeTableLabel->setStyleSheet("background: #000080; color: #ffff00; padding: 3px; font-weight: bold; border: 1px solid yellow;");
     m_layout->addWidget(m_activeTableLabel);
 
     m_mainTable = new QTableWidget(this);
@@ -189,7 +190,7 @@ void MainWindow::setupClassicUI()
     m_layout->addWidget(m_mainTable);
 
     m_classicFooter = new QLabel(" F1-Help | F10-Menu | Alt+T-Tables | Tab-Focus | Ctrl+V-View | Ctrl+E-Exit ", this);
-    m_classicFooter->setStyleSheet("background-color: #c0c0c0; color: black; border-top: 1px solid black; font-family: 'Consolas'; font-size: 11px;");
+    m_classicFooter->setStyleSheet("background-color: #c0c0c0; color: black; border-top: 2px solid black; font-family: 'Consolas'; font-size: 11px; font-weight: bold;");
     m_layout->addWidget(m_classicFooter);
 
     setTabOrder(m_filterColumnCombo, m_filterValueEdit);
@@ -243,7 +244,7 @@ void MainWindow::applyFilter()
     if (m_dbManager->isHttpMode()) {
         data = m_dbManager->fetchTableDataHttp(m_activeTable, where);
     } else {
-        QString sql = "SELECT * FROM " + m_activeTable;
+        QString sql = "SELECT * FROM public." + m_activeTable;
         if (!where.isEmpty()) sql += " WHERE " + where;
         QSqlQuery q = m_dbManager->executeQuery(sql);
         QStringList cols = m_dbManager->getColumnList(m_activeTable);
@@ -268,14 +269,21 @@ void MainWindow::applyFilter()
 
 void MainWindow::addRecord() {
     RecordDialog d(m_dbManager, m_activeTable, this);
-    if(d.exec()==QDialog::Accepted) applyFilter();
+    if(d.exec()==QDialog::Accepted) {
+        qDebug() << "Refresh after add";
+        applyFilter();
+    }
 }
 
 void MainWindow::updateRecord() {
     if (!m_mainTable) return;
     int r = m_mainTable->currentRow();
     if(r < 0) return;
-    int id = m_mainTable->item(r, 0)->text().toInt();
+    QString pk = m_dbManager->getPrimaryKeyColumn(m_activeTable);
+    int colIdx = -1;
+    for(int i=0; i<m_mainTable->columnCount(); ++i) if(m_mainTable->horizontalHeaderItem(i)->text() == pk) { colIdx = i; break; }
+    if(colIdx < 0) colIdx = 0;
+    int id = m_mainTable->item(r, colIdx)->text().toInt();
     RecordDialog d(m_dbManager, m_activeTable, this, id);
     if(d.exec()==QDialog::Accepted) applyFilter();
 }
@@ -285,8 +293,21 @@ void MainWindow::deleteRecord() {
     int r = m_mainTable->currentRow();
     if(r < 0) return;
     if(QMessageBox::question(this, "Delete", "Confirm?") == QMessageBox::Yes) {
-        int id = m_mainTable->item(r, 0)->text().toInt();
-        if(m_dbManager->deleteRecordHttp(m_activeTable, id)) applyFilter();
+        QString pk = m_dbManager->getPrimaryKeyColumn(m_activeTable);
+        int colIdx = -1;
+        for(int i=0; i<m_mainTable->columnCount(); ++i) if(m_mainTable->horizontalHeaderItem(i)->text() == pk) { colIdx = i; break; }
+        if(colIdx < 0) colIdx = 0;
+        int id = m_mainTable->item(r, colIdx)->text().toInt();
+
+        bool ok = false;
+        if(m_dbManager->isHttpMode()) {
+            ok = m_dbManager->deleteRecordHttp(m_activeTable, id);
+        } else {
+            QString sql = QString("DELETE FROM public.%1 WHERE %2 = %3").arg(m_activeTable).arg(pk).arg(id);
+            m_dbManager->executeQuery(sql, &ok);
+        }
+        if(ok) applyFilter();
+        else QMessageBox::critical(this, "Error", m_dbManager->lastError());
     }
 }
 
@@ -317,8 +338,12 @@ void MainWindow::setupStyles()
             "QMainWindow { background-color: #c0c0c0; }"
             "QMenuBar { background-color: #c0c0c0; border-bottom: 1px solid black; color: black; }"
             "QMenuBar::item:selected { background-color: #000080; color: white; }"
-            "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; font-size: 13px; }"
+            "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; font-size: 13px; selection-background-color: #000080; selection-color: white; }"
             "QLabel { color: black; font-family: 'Consolas'; }"
+            "QLineEdit { background-color: #ffffff; color: #000000; border: 2px inset gray; selection-background-color: #000080; }"
+            "QComboBox { background-color: #ffffff; color: #000000; border: 1px solid gray; }"
+            "QPushButton { background-color: #c0c0c0; color: black; border: 2px outset gray; padding: 4px; font-weight: bold; }"
+            "QPushButton:pressed { border: 2px inset gray; background-color: #a0a0a0; }"
         );
     } else {
         setStyleSheet("QMainWindow { background-color: #f0f3f5; }"
@@ -374,7 +399,7 @@ void MainWindow::exitApp() {
 void MainWindow::updateConnectionStatus() {
     if (!m_statusLabel) return;
     m_statusLabel->setText(m_dbManager->isConnected() ? "● ONLINE" : "○ OFFLINE");
-    m_statusLabel->setStyleSheet(m_dbManager->isConnected() ? "color: green;" : "color: red;");
+    m_statusLabel->setStyleSheet(m_dbManager->isConnected() ? "color: green; font-weight: bold;" : "color: red; font-weight: bold;");
 }
 
 bool MainWindow::connectToDatabase() {

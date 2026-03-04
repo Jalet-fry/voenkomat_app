@@ -15,7 +15,7 @@ TablesWindow::TablesWindow(DatabaseManager *dbManager, QWidget *parent)
     , m_dbManager(dbManager)
 {
     setWindowTitle("Таблицы");
-    setGeometry(200, 200, 400, 500);
+    setMinimumSize(450, 600);
     
     setupUI();
     setupStyles();
@@ -30,40 +30,38 @@ void TablesWindow::setupUI()
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setSpacing(15);
-    m_layout->setContentsMargins(20, 20, 20, 20);
+    m_layout->setContentsMargins(25, 25, 25, 25);
 
     QLabel *title = new QLabel("Таблицы базы данных", this);
     title->setAlignment(Qt::AlignCenter);
-    title->setStyleSheet("font-size: 20px; color: #333; font-weight: bold;");
+    title->setStyleSheet("font-size: 22px; color: #2c3e50; font-weight: bold; margin-bottom: 10px;");
     m_layout->addWidget(title);
 
-    QPushButton *createTableBtn = new QPushButton("Создать таблицу", this);
-    createTableBtn->setMinimumHeight(40);
-    createTableBtn->setStyleSheet(
-        "QPushButton {"
-        "    background-color: #4CAF50;"
-        "    color: white;"
-        "}"
-        "QPushButton:hover { background-color: #45a049; }"
-        "QPushButton:pressed { background-color: #3d8b40; }"
-    );
+    QPushButton *createTableBtn = new QPushButton("+ Создать новую таблицу", this);
+    createTableBtn->setMinimumHeight(45);
+    createTableBtn->setCursor(Qt::PointingHandCursor);
     connect(createTableBtn, &QPushButton::clicked, this, &TablesWindow::createTable);
     m_layout->addWidget(createTableBtn);
 
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setWidgetResizable(true);
+    m_scrollArea->setFrameShape(QFrame::NoFrame);
+
     m_scrollContent = new QWidget();
     m_tableButtonsLayout = new QVBoxLayout(m_scrollContent);
     m_tableButtonsLayout->setSpacing(10);
+    m_tableButtonsLayout->setContentsMargins(5, 5, 5, 5);
+    m_tableButtonsLayout->addStretch();
+
     m_scrollArea->setWidget(m_scrollContent);
     m_layout->addWidget(m_scrollArea);
 
-    QPushButton *backBtn = new QPushButton("Назад", this);
-    backBtn->setMinimumHeight(40);
+    QPushButton *backBtn = new QPushButton("← Вернуться в меню", this);
+    backBtn->setMinimumHeight(45);
+    backBtn->setCursor(Qt::PointingHandCursor);
     connect(backBtn, &QPushButton::clicked, this, &TablesWindow::goBack);
     m_layout->addWidget(backBtn);
 
-    // Инициализация названий на основе ПОСЛЕДНЕГО дампа (английские таблицы)
     using namespace Db;
     m_tableDisplayNames[Tables::CONSCRIPTS] = "Призывники";
     m_tableDisplayNames[Tables::COMMISSIONERS] = "Комиссары";
@@ -73,58 +71,74 @@ void TablesWindow::setupUI()
     m_tableDisplayNames[Tables::SERVICE_RECORD_CARDS] = "Учётные карты";
     m_tableDisplayNames[Tables::CALLUP_EVENTS] = "Мероприятия";
     m_tableDisplayNames[Tables::CONSCRIPTS_COMMISSIONERS] = "Связь: Призывник-Комиссар";
-    m_tableDisplayNames[Tables::CONSCRIPTS_EVENTS] = "Связь: Призывник-Мероприятие";
 }
 
 void TablesWindow::setupStyles()
 {
+    // Современный нейтральный стиль
     setStyleSheet(
-        "QWidget { background-color: #dbffff; }"
+        "QWidget { background-color: #f8f9fa; }"
+        "QScrollArea { background-color: transparent; }"
+        "QWidget#scrollContent { background-color: transparent; }"
         "QPushButton {"
-        "    background-color: #FFB6C1;"
-        "    font-size: 16px;"
+        "    background-color: #2c3e50;"
+        "    font-size: 15px;"
         "    padding: 10px;"
-        "    border-radius: 8px;"
-        "    color: black;"
+        "    border-radius: 6px;"
+        "    color: white;"
         "    border: none;"
-        "    min-height: 40px;"
         "}"
-        "QPushButton:hover { background-color: #FF69B4; }"
-        "QPushButton:pressed { background-color: #FF1493; }"
+        "QPushButton:hover { background-color: #34495e; }"
+        "QPushButton:pressed { background-color: #1a252f; }"
+        "QPushButton[tableButton='true'] {"
+        "    background-color: #ffffff;"
+        "    color: #2c3e50;"
+        "    border: 1px solid #dee2e6;"
+        "    text-align: left;"
+        "    padding-left: 20px;"
+        "}"
+        "QPushButton[tableButton='true']:hover {"
+        "    background-color: #e9ecef;"
+        "    border: 1px solid #3498db;"
+        "}"
     );
 }
 
 void TablesWindow::refreshTables()
 {
-    if (!m_dbManager || !m_dbManager->isConnected()) {
-        QMessageBox::warning(this, "Ошибка", "База данных не подключена");
-        return;
-    }
+    if (!m_dbManager || !m_dbManager->isConnected()) return;
     refreshTableButtons();
 }
 
 void TablesWindow::refreshTableButtons()
 {
+    // Очистка
     QLayoutItem *item;
-    while ((item = m_tableButtonsLayout->takeAt(0)) != nullptr) {
+    while (m_tableButtonsLayout->count() > 1) { // Оставляем растяжку (stretch)
+        item = m_tableButtonsLayout->takeAt(0);
         if (item->widget()) item->widget()->deleteLater();
         delete item;
     }
     m_buttonToTable.clear();
 
-    if (!m_dbManager || !m_dbManager->isConnected()) return;
-
     QStringList tables = m_dbManager->getTableList();
+    int index = 0;
     foreach (const QString &tableName, tables) {
         QString displayName = m_tableDisplayNames.value(tableName, tableName);
-        QPushButton *btn = new QPushButton(displayName, this);
+        QPushButton *btn = new QPushButton(QString("%1. %2").arg(index + 1).arg(displayName), this);
+        btn->setProperty("tableButton", true);
+        btn->setMinimumHeight(50);
+        btn->setCursor(Qt::PointingHandCursor);
         btn->setContextMenuPolicy(Qt::CustomContextMenu);
+
         connect(btn, &QPushButton::clicked, [this, tableName]() { openTable(tableName); });
         connect(btn, &QPushButton::customContextMenuRequested, [this, btn, tableName](const QPoint &pos) {
             showTableContextMenu(btn->mapToGlobal(pos), tableName);
         });
-        m_tableButtonsLayout->addWidget(btn);
+
+        m_tableButtonsLayout->insertWidget(index, btn);
         m_buttonToTable[btn] = tableName;
+        index++;
     }
 }
 
@@ -138,9 +152,14 @@ void TablesWindow::openTable(const QString &tableName)
 void TablesWindow::showTableContextMenu(const QPoint &pos, const QString &tableName)
 {
     QMenu menu(this);
-    QAction *backupAction = menu.addAction("Создать бэкап");
-    QAction *editStructureAction = menu.addAction("Редактировать структуру");
-    QAction *deleteAction = menu.addAction("Удалить таблицу");
+    menu.setStyleSheet("QMenu { background-color: white; border: 1px solid #dee2e6; color: #2c3e50; } "
+                       "QMenu::item:selected { background-color: #3498db; color: white; }");
+
+    QAction *backupAction = menu.addAction("📦 Создать бэкап");
+    QAction *editStructureAction = menu.addAction("🛠 Структура");
+    menu.addSeparator();
+    QAction *deleteAction = menu.addAction("❌ Удалить таблицу");
+
     QAction *selectedAction = menu.exec(pos);
     if (selectedAction == backupAction) backupTable(tableName);
     else if (selectedAction == editStructureAction) editTableStructure(tableName);
@@ -153,7 +172,7 @@ void TablesWindow::backupTable(const QString &tableName)
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
     QString fileName = QFileDialog::getSaveFileName(this, "Сохранить бэкап", QString("backup_%1_%2.sql").arg(tableName).arg(timestamp), "SQL Files (*.sql)");
     if (!fileName.isEmpty()) {
-        if (backupManager.exportTable(tableName, fileName)) QMessageBox::information(this, "Успех", "Бэкап создан");
+        if (backupManager.exportTable(tableName, fileName)) QMessageBox::information(this, "Успех", "Бэкап успешно создан.");
         else QMessageBox::critical(this, "Ошибка", backupManager.lastError());
     }
 }
@@ -169,7 +188,7 @@ void TablesWindow::createTable()
 
 void TablesWindow::deleteTable(const QString &tableName)
 {
-    if (QMessageBox::question(this, "Удаление", QString("Удалить таблицу '%1'?").arg(tableName)) == QMessageBox::Yes) {
+    if (QMessageBox::question(this, "Удаление", QString("Вы действительно хотите полностью удалить таблицу '%1'?").arg(tableName)) == QMessageBox::Yes) {
         if (m_dbManager->dropTable(tableName, true)) refreshTables();
         else QMessageBox::critical(this, "Ошибка", m_dbManager->lastError());
     }
@@ -183,6 +202,5 @@ void TablesWindow::editTableStructure(const QString &tableName)
 
 void TablesWindow::goBack()
 {
-    if (parentWidget()) parentWidget()->show();
     hide();
 }

@@ -13,6 +13,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSqlRecord>
+#include <QScrollArea>
+#include <QTimer>
 #include "xlsxdocument.h"
 
 using namespace QXlsx;
@@ -75,34 +77,49 @@ void TableViewWindow::setupModernUI()
     m_layout->setContentsMargins(15, 15, 15, 15);
     
     QLabel *title = new QLabel(m_tableName.toUpper(), this);
-    title->setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;");
+    title->setObjectName("modernTitle");
     m_layout->addWidget(title);
 
     m_filterScrollArea = new QScrollArea(this);
-    m_filterScrollArea->setMaximumHeight(120);
+    m_filterScrollArea->setMaximumHeight(150);
     m_filterScrollArea->setWidgetResizable(true);
+    m_filterScrollArea->setObjectName("filterArea");
+
     QWidget *fw = new QWidget();
+    fw->setObjectName("filterContent");
     QGridLayout *fl = new QGridLayout(fw);
     
     QStringList cols = m_dbManager->getColumnList(m_tableName);
     int r=0, c=0;
     foreach(const QString &col, cols) {
+        QLabel *l = new QLabel(col + ":", fw);
         QLineEdit *e = new QLineEdit(fw);
-        e->setPlaceholderText(col);
+        e->setPlaceholderText("Поиск...");
         connect(e, &QLineEdit::textChanged, this, &TableViewWindow::onFilterChanged);
         m_filterWidgets[col] = e;
-        fl->addWidget(new QLabel(col, fw), r, c);
+
+        fl->addWidget(l, r, c);
         fl->addWidget(e, r, c+1);
-        if (++c > 2) { c=0; r++; }
+
+        c += 2;
+        if (c >= 6) { c=0; r++; }
     }
     m_filterScrollArea->setWidget(fw);
-    m_layout->addWidget(new QLabel("Фильтры:", this));
+
+    QLabel *filterHeader = new QLabel("Фильтры поиска:", this);
+    filterHeader->setObjectName("filterHeader");
+    m_layout->addWidget(filterHeader);
     m_layout->addWidget(m_filterScrollArea);
 
     QHBoxLayout *bl = new QHBoxLayout();
     m_addBtn = new QPushButton("Добавить", this);
     m_editBtn = new QPushButton("Изменить", this);
     m_deleteBtn = new QPushButton("Удалить", this);
+
+    m_addBtn->setMinimumHeight(35);
+    m_editBtn->setMinimumHeight(35);
+    m_deleteBtn->setMinimumHeight(35);
+
     connect(m_addBtn, &QPushButton::clicked, this, &TableViewWindow::addRecord);
     connect(m_editBtn, &QPushButton::clicked, this, &TableViewWindow::editRecord);
     connect(m_deleteBtn, &QPushButton::clicked, this, &TableViewWindow::deleteRecord);
@@ -111,6 +128,8 @@ void TableViewWindow::setupModernUI()
     bl->addStretch();
     
     QPushButton *back = new QPushButton("Назад", this);
+    back->setMinimumHeight(35);
+    back->setStyleSheet("background-color: #95a5a6;");
     connect(back, &QPushButton::clicked, this, &TableViewWindow::goBack);
     bl->addWidget(back);
     m_layout->addLayout(bl);
@@ -255,10 +274,29 @@ void TableViewWindow::updateButtonStates() {
 void TableViewWindow::setupStyles() {
     if (m_isClassicUI) {
         setStyleSheet("QWidget { background-color: #c0c0c0; color: black; }"
-                      "QTableWidget { background-color: white; border: 2px inset gray; font-family: 'Consolas'; }"
-                      "QMenuBar { background-color: #c0c0c0; border-bottom: 1px solid black; }");
+                      "QTableWidget { background-color: white; border: 2px inset gray; font-family: 'Consolas'; color: black; }"
+                      "QTableWidget::item { color: black; }"
+                      "QHeaderView::section { background-color: #c0c0c0; color: black; border: 1px solid black; }"
+                      "QMenuBar { background-color: #c0c0c0; border-bottom: 1px solid black; color: black; }");
     } else {
-        setStyleSheet("QPushButton { background-color: #3498db; color: white; border-radius: 4px; padding: 8px; }");
+        setStyleSheet(
+            "QWidget { background-color: #f8f9fa; color: #2c3e50; }"
+            "QLabel#modernTitle { font-size: 20px; font-weight: bold; color: #2c3e50; }"
+            "QLabel#filterHeader { font-weight: bold; margin-top: 10px; color: #34495e; }"
+            "QScrollArea#filterArea { border: 1px solid #dee2e6; background-color: white; border-radius: 4px; }"
+            "QWidget#filterContent { background-color: white; }"
+            "QLineEdit { background-color: white; color: #2c3e50; border: 1px solid #ced4da; border-radius: 4px; padding: 5px; selection-background-color: #3498db; }"
+            "QLineEdit:focus { border: 1px solid #3498db; }"
+            "QPushButton { background-color: #3498db; color: white; border-radius: 4px; padding: 8px; font-weight: bold; border: none; }"
+            "QPushButton:hover { background-color: #2980b9; }"
+            "QPushButton:pressed { background-color: #21618c; }"
+            "QTableWidget { background-color: white; color: black; border: 1px solid #dee2e6; gridline-color: #f1f1f1; selection-background-color: #e3f2fd; selection-color: #1976d2; }"
+            "QTableWidget::item { padding: 5px; color: black; }"
+            "QHeaderView::section { background-color: #f1f3f5; color: #495057; border: none; border-bottom: 2px solid #dee2e6; padding: 5px; font-weight: bold; }"
+            "QScrollBar:vertical { border: none; background: #f1f1f1; width: 10px; margin: 0px; }"
+            "QScrollBar::handle:vertical { background: #ced4da; min-height: 20px; border-radius: 5px; }"
+            "QScrollBar::handle:vertical:hover { background: #adb5bd; }"
+        );
     }
 }
 

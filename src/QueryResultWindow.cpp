@@ -24,85 +24,87 @@ QueryResultWindow::QueryResultWindow(const QString &title,
     , m_rows(rows)
     , m_dbManager(dbManager)
 {
-    setWindowTitle(QString("Результаты запроса: %1").arg(title));
+    setWindowTitle(QString("Результат: %1").arg(title));
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint | Qt::WindowCloseButtonHint);
-    resize(900, 600);
+    resize(1000, 700);
 
-    // Инициализация русских названий полей (те же, что в TableViewWindow)
-    m_fieldDisplayNames["id_prizivnik"] = "ID призывника";
-    m_fieldDisplayNames["fio"] = "ФИО";
-    m_fieldDisplayNames["data_rozhdeniya"] = "Дата рождения";
-    m_fieldDisplayNames["adres_prozhivaniya"] = "Адрес проживания";
-    m_fieldDisplayNames["nomer_pasporta"] = "Номер паспорта";
-    m_fieldDisplayNames["kategoria_godnosti"] = "Категория годности";
+    // Расширенная локализация полей
+    m_fieldDisplayNames["conscript_id"] = "ID Призывника";
+    m_fieldDisplayNames["full_name"] = "ФИО";
+    m_fieldDisplayNames["birth_date"] = "Дата рождения";
+    m_fieldDisplayNames["residence_address"] = "Адрес";
+    m_fieldDisplayNames["passport_number"] = "Паспорт";
+    m_fieldDisplayNames["category_name"] = "Категория годности";
     m_fieldDisplayNames["age"] = "Возраст";
+    m_fieldDisplayNames["ticket_number"] = "№ Военного билета";
+    m_fieldDisplayNames["military_rank"] = "Звание";
+    m_fieldDisplayNames["count"] = "Количество";
+    m_fieldDisplayNames["examination_date"] = "Дата осмотра";
+    m_fieldDisplayNames["med_count"] = "Кол-во медосмотров";
+    m_fieldDisplayNames["avg_age"] = "Средний возраст";
 
     setupUI();
     setupStyles();
 }
 
-QueryResultWindow::~QueryResultWindow()
-{
-}
+QueryResultWindow::~QueryResultWindow() {}
 
 void QueryResultWindow::setupUI()
 {
     QVBoxLayout *layout = new QVBoxLayout(this);
-    layout->setSpacing(15);
-    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(10);
+    layout->setContentsMargins(15, 15, 15, 15);
 
-    // Заголовок
     QLabel *titleLabel = new QLabel(m_title, this);
-    titleLabel->setAlignment(Qt::AlignCenter);
-    titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #333;");
+    titleLabel->setAlignment(Qt::AlignLeft);
+    titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #2c3e50; margin-bottom: 5px;");
     layout->addWidget(titleLabel);
 
-    // Таблица
     m_table = new QTableWidget(this);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setRowCount(m_rows.size());
     m_table->setColumnCount(m_columnNames.size());
+    m_table->setAlternatingRowColors(true);
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
 
     QStringList displayHeaders;
-    foreach (const QString &col, m_columnNames) {
-        displayHeaders << getDisplayName(col);
-    }
+    foreach (const QString &col, m_columnNames) displayHeaders << getDisplayName(col);
     m_table->setHorizontalHeaderLabels(displayHeaders);
 
-    // Заполнение данными
     for (int i = 0; i < m_rows.size(); ++i) {
         for (int j = 0; j < m_columnNames.size() && j < m_rows[i].size(); ++j) {
-            QTableWidgetItem *item = new QTableWidgetItem(
-                m_rows[i][j].isNull() ? "—" : m_rows[i][j].toString());
+            QString val = m_rows[i][j].isNull() ? "—" : m_rows[i][j].toString();
+            if (m_rows[i][j].type() == QVariant::Date) val = m_rows[i][j].toDate().toString("dd.MM.yyyy");
+
+            QTableWidgetItem *item = new QTableWidgetItem(val);
             item->setTextAlignment(Qt::AlignCenter);
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-            item->setTextColor(Qt::black);
-#else
-            item->setForeground(QBrush(Qt::black));
-#endif
+            item->setForeground(QBrush(QColor("#212529")));
             m_table->setItem(i, j, item);
         }
     }
 
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->resizeColumnsToContents();
     layout->addWidget(m_table);
 
-    // Кнопки
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     
-    QPushButton *exportCsvBtn = new QPushButton("Экспорт в CSV", this);
-    exportCsvBtn->setMinimumHeight(40);
-    connect(exportCsvBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToCSV);
-    buttonLayout->addWidget(exportCsvBtn);
-    
-    QPushButton *exportXlsxBtn = new QPushButton("Экспорт в Excel", this);
-    exportXlsxBtn->setMinimumHeight(40);
-    connect(exportXlsxBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToXlsx);
-    buttonLayout->addWidget(exportXlsxBtn);
-    
+    QPushButton *exportCsvBtn = new QPushButton("CSV", this);
+    QPushButton *exportXlsxBtn = new QPushButton("Excel", this);
     QPushButton *backBtn = new QPushButton("Закрыть", this);
-    backBtn->setMinimumHeight(40);
+    
+    exportCsvBtn->setFixedWidth(120);
+    exportXlsxBtn->setFixedWidth(120);
+    backBtn->setFixedWidth(120);
+
+    connect(exportCsvBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToCSV);
+    connect(exportXlsxBtn, &QPushButton::clicked, this, &QueryResultWindow::exportToXlsx);
     connect(backBtn, &QPushButton::clicked, this, &QueryResultWindow::goBack);
+
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(exportCsvBtn);
+    buttonLayout->addWidget(exportXlsxBtn);
     buttonLayout->addWidget(backBtn);
     
     layout->addLayout(buttonLayout);
@@ -110,33 +112,36 @@ void QueryResultWindow::setupUI()
 
 void QueryResultWindow::setupStyles()
 {
+    // Профессиональный современный стиль (без ядовито-голубого фона)
     setStyleSheet(
-        "QDialog { background-color: #dbffff; }"
+        "QDialog { background-color: #f8f9fa; }"
         "QTableWidget {"
         "    background-color: white;"
-        "    border: 2px solid #FFB6C1;"
-        "    border-radius: 5px;"
-        "    color: black;"
+        "    border: 1px solid #dee2e6;"
+        "    gridline-color: #e9ecef;"
+        "    selection-background-color: #3498db;"
+        "    selection-color: white;"
+        "    border-radius: 4px;"
         "}"
-        "QTableWidget::item { color: black; }"
         "QHeaderView::section {"
-        "    background-color: #FFB6C1;"
-        "    padding: 5px;"
-        "    border: 1px solid #FF69B4;"
+        "    background-color: #e9ecef;"
+        "    padding: 8px;"
+        "    border: none;"
+        "    border-right: 1px solid #dee2e6;"
+        "    border-bottom: 2px solid #dee2e6;"
         "    font-weight: bold;"
-        "    color: black;"
+        "    color: #495057;"
         "}"
         "QPushButton {"
-        "    background-color: #E0B0FF;"
-        "    font-size: 16px;"
-        "    padding: 10px;"
-        "    border-radius: 8px;"
-        "    color: black;"
+        "    background-color: #2c3e50;"
+        "    color: white;"
         "    border: none;"
-        "    min-height: 40px;"
+        "    border-radius: 4px;"
+        "    padding: 8px 15px;"
+        "    font-weight: bold;"
         "}"
-        "QPushButton:hover { background-color: #c770ff; }"
-        "QPushButton:pressed { background-color: #a314ff; }"
+        "QPushButton:hover { background-color: #34495e; }"
+        "QPushButton:pressed { background-color: #1a252f; }"
     );
 }
 
@@ -145,27 +150,11 @@ QString QueryResultWindow::getDisplayName(const QString &fieldName) const
     return m_fieldDisplayNames.value(fieldName, fieldName);
 }
 
-void QueryResultWindow::goBack()
-{
-    accept();
-}
+void QueryResultWindow::goBack() { accept(); }
 
 void QueryResultWindow::exportToCSV()
 {
-    QString queriesDir;
-    if (m_dbManager) {
-        BackupManager backupManager(m_dbManager);
-        queriesDir = backupManager.getQueriesExportPath("csv");
-    } else {
-        QDir dir("exports/queries/csv");
-        if (!dir.exists()) dir.mkpath(".");
-        queriesDir = dir.absolutePath();
-    }
-    
-    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
-    QString defaultPath = QDir(queriesDir).absoluteFilePath(QString("query_%1.csv").arg(timestamp));
-    
-    QString fileName = QFileDialog::getSaveFileName(this, "Сохранить в CSV", defaultPath, "CSV Files (*.csv)");
+    QString fileName = QFileDialog::getSaveFileName(this, "Экспорт CSV", "", "CSV Files (*.csv)");
     if (fileName.isEmpty()) return;
     
     QFile file(fileName);
@@ -175,59 +164,38 @@ void QueryResultWindow::exportToCSV()
     }
     
     QTextStream out(&file);
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    out.setCodec("UTF-8");
-#endif
-    out << "\xEF\xBB\xBF"; // BOM
+    out.setGenerateByteOrderMark(true);
     
     QStringList headers;
     foreach (const QString &col, m_columnNames) headers << getDisplayName(col);
-    out << headers.join(",") << "\n";
+    out << headers.join(";") << "\n";
     
     foreach (const QList<QVariant> &row, m_rows) {
         QStringList values;
         for (int i = 0; i < m_columnNames.size() && i < row.size(); ++i) {
             QString val = row[i].isNull() ? "" : row[i].toString();
-            if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
-                val.replace("\"", "\"\"");
-                val = "\"" + val + "\"";
-            }
+            val.replace(";", ",");
             values << val;
         }
-        out << values.join(",") << "\n";
+        out << values.join(";") << "\n";
     }
     file.close();
-    QMessageBox::information(this, "Успех", "Файл сохранен");
+    QMessageBox::information(this, "Успех", "Файл успешно сохранен");
 }
 
 void QueryResultWindow::exportToXlsx()
 {
-    QString queriesDir;
-    if (m_dbManager) {
-        BackupManager backupManager(m_dbManager);
-        queriesDir = backupManager.getQueriesExportPath("xlsx");
-    } else {
-        QDir dir("exports/queries/xlsx");
-        if (!dir.exists()) dir.mkpath(".");
-        queriesDir = dir.absolutePath();
-    }
-    
-    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
-    QString defaultPath = QDir(queriesDir).absoluteFilePath(QString("query_%1.xlsx").arg(timestamp));
-    
-    QString fileName = QFileDialog::getSaveFileName(this, "Сохранить в Excel", defaultPath, "Excel Files (*.xlsx)");
+    QString fileName = QFileDialog::getSaveFileName(this, "Экспорт Excel", "", "Excel Files (*.xlsx)");
     if (fileName.isEmpty()) return;
     
     Document xlsx;
-    for (int col = 0; col < m_columnNames.size(); ++col) {
-        xlsx.write(1, col + 1, getDisplayName(m_columnNames[col]));
-    }
-    
     Format headerFormat;
     headerFormat.setFontBold(true);
-    headerFormat.setPatternBackgroundColor(QColor(200, 200, 200));
-    for (int col = 1; col <= m_columnNames.size(); ++col) {
-        xlsx.write(1, col, xlsx.read(1, col), headerFormat);
+    headerFormat.setPatternBackgroundColor(QColor("#e9ecef"));
+    headerFormat.setHorizontalAlignment(Format::AlignHCenter);
+
+    for (int col = 0; col < m_columnNames.size(); ++col) {
+        xlsx.write(1, col + 1, getDisplayName(m_columnNames[col]), headerFormat);
     }
     
     for (int row = 0; row < m_rows.size(); ++row) {
@@ -236,6 +204,6 @@ void QueryResultWindow::exportToXlsx()
         }
     }
     
-    if (xlsx.saveAs(fileName)) QMessageBox::information(this, "Успех", "Файл сохранен");
-    else QMessageBox::critical(this, "Ошибка", "Не удалось сохранить");
+    if (xlsx.saveAs(fileName)) QMessageBox::information(this, "Успех", "Файл успешно сохранен");
+    else QMessageBox::critical(this, "Ошибка", "Не удалось сохранить файл");
 }

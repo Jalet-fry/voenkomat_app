@@ -32,9 +32,12 @@ RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName,
     m_columns = m_dbManager->getColumnList(tableName);
     m_foreignKeys = m_dbManager->getForeignKeyInfo(tableName);
 
+    // Локализация имен полей
     m_fieldDisplayNames["conscript_id"] = "ID призывника";
     m_fieldDisplayNames["full_name"] = "ФИО";
     m_fieldDisplayNames["passport_number"] = "Паспорт";
+    m_fieldDisplayNames["birth_date"] = "Дата рождения";
+    m_fieldDisplayNames["residence_address"] = "Адрес";
 
     setupUI();
     setupStyles();
@@ -76,9 +79,9 @@ void RecordDialog::setupModernUI()
         if (col == pk) {
             if (m_recordId >= 0) {
                 field->setReadOnly(true);
-                field->setStyleSheet("background-color: #f1f2f6; color: #7f8c8d;");
+                field->setStyleSheet("background-color: #f1f2f6; color: #7f8c8d; border: 1px solid #bdc3c7; padding: 8px;");
             } else {
-                field->setPlaceholderText("Auto");
+                field->setPlaceholderText("Автоматически");
             }
         }
 
@@ -104,7 +107,10 @@ void RecordDialog::setupClassicUI()
         QLabel *label = new QLabel(col + ":", this);
         QLineEdit *field = new QLineEdit(this);
 
-        if (col == pk && m_recordId >= 0) field->setReadOnly(true);
+        if (col == pk && m_recordId >= 0) {
+            field->setReadOnly(true);
+            field->setStyleSheet("background-color: #d0d0d0;");
+        }
 
         m_fields[col] = field;
         form->addWidget(label, row, 0);
@@ -121,7 +127,10 @@ void RecordDialog::setupClassicUI()
 void RecordDialog::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) { reject(); return; }
-    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { saveRecord(); return; }
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        saveRecord();
+        return;
+    }
     QDialog::keyPressEvent(event);
 }
 
@@ -152,7 +161,7 @@ void RecordDialog::saveRecord()
 
     foreach (const QString &col, m_columns) {
         QString val = m_fields[col]->text().trimmed();
-        if (m_recordId < 0 && col == pk && val.isEmpty()) continue;
+        if (m_recordId < 0 && col == pk && (val.isEmpty() || val == "0")) continue;
         json[col] = val;
     }
 
@@ -160,7 +169,6 @@ void RecordDialog::saveRecord()
     if (m_dbManager->isHttpMode()) {
         ok = (m_recordId < 0) ? m_dbManager->addRecordHttp(m_tableName, json) : m_dbManager->updateRecordHttp(m_tableName, m_recordId, json);
     } else {
-        // Simple SQL construction (simplified for brevity, should use parameters in real app)
         QStringList ks = json.keys();
         QStringList vs;
         foreach(const QString &k, ks) vs << QString("'%1'").arg(json[k].toString().replace("'", "''"));
@@ -175,7 +183,7 @@ void RecordDialog::saveRecord()
     }
 
     if (ok) accept();
-    else QMessageBox::critical(this, "Ошибка", m_dbManager->lastError());
+    else QMessageBox::critical(this, "Ошибка", m_dbManager->lastError().isEmpty() ? "Не удалось сохранить запись" : m_dbManager->lastError());
 }
 
 void RecordDialog::setupStyles()
@@ -183,9 +191,12 @@ void RecordDialog::setupStyles()
     if (m_isClassicUI) {
         setStyleSheet("QDialog { background-color: #c0c0c0; color: black; }"
                       "QLineEdit { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; }"
-                      "QLabel { font-weight: bold; }");
+                      "QLabel { color: black; }");
     } else {
-        setStyleSheet("QDialog { background-color: #dbffff; }");
+        setStyleSheet("QDialog { background-color: #f0f3f5; }"
+                      "QLabel { color: #2c3e50; }"
+                      "QPushButton { background-color: #2c3e50; color: white; border-radius: 4px; padding: 6px 12px; }"
+                      "QPushButton:hover { background-color: #34495e; }");
     }
 }
 

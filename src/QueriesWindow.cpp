@@ -26,7 +26,7 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     setWindowTitle(m_isClassicUI ? "Queries List (CUA)" : "Special Queries");
 
     if (m_isClassicUI) {
-        setFixedSize(600, 400);
+        setFixedSize(650, 450);
     } else {
         resize(800, 600);
     }
@@ -58,12 +58,16 @@ void QueriesWindow::setupUI()
     m_table->setAlternatingRowColors(true);
     m_table->horizontalHeader()->setStretchLastSection(true);
 
+    // itemActivated срабатывает и на DoubleClick, и на Enter
+    connect(m_table, &QTableWidget::itemActivated, this, &QueriesWindow::runSelectedQuery);
+    // Для обратной совместимости
     connect(m_table, &QTableWidget::itemDoubleClicked, this, &QueriesWindow::runSelectedQuery);
+
     m_layout->addWidget(m_table);
 
     if (m_isClassicUI) {
-        m_footerHint = new QLabel(" [Enter] Run Query | [Esc] Close Window ", this);
-        m_footerHint->setStyleSheet("background-color: #000080; color: white; padding: 2px; font-family: 'Consolas'; font-size: 11px;");
+        m_footerHint = new QLabel(" [ENTER] Запуск запроса | [ESC] Назад ", this);
+        m_footerHint->setStyleSheet("background-color: #000080; color: white; padding: 4px; font-family: 'Consolas'; font-size: 12px; font-weight: bold;");
         m_layout->addWidget(m_footerHint);
     }
 }
@@ -85,8 +89,11 @@ void QueriesWindow::setupClassicUI()
 void QueriesWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) { goBack(); return; }
+    // QTableWidget перехватывает Enter сам по себе для активации,
+    // но на всякий случай оставим обработку здесь для окна
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        if (m_table->hasFocus()) { runSelectedQuery(); return; }
+        runSelectedQuery();
+        return;
     }
     QWidget::keyPressEvent(event);
 }
@@ -103,21 +110,28 @@ void QueriesWindow::refreshTable()
     int row = 0;
     for (const auto &q : m_allQueries) {
         m_table->insertRow(row);
-        m_table->setItem(row, 0, new QTableWidgetItem(q.number));
-        m_table->setItem(row, 1, new QTableWidgetItem(q.type));
-        m_table->setItem(row, 2, new QTableWidgetItem(q.description));
+
+        QTableWidgetItem *it0 = new QTableWidgetItem(q.number);
+        QTableWidgetItem *it1 = new QTableWidgetItem(q.type);
+        QTableWidgetItem *it2 = new QTableWidgetItem(q.description);
+
+        // В классическом интерфейсе CUA все должно быть максимально контрастным
+        it0->setForeground(QBrush(Qt::black));
+        it1->setForeground(QBrush(Qt::black));
+        it2->setForeground(QBrush(Qt::black));
+
+        m_table->setItem(row, 0, it0);
+        m_table->setItem(row, 1, it1);
+        m_table->setItem(row, 2, it2);
 
         if (!m_isClassicUI) {
             QPushButton *btn = new QPushButton("Run", this);
             connect(btn, &QPushButton::clicked, this, &QueriesWindow::runSelectedQuery);
             m_table->setCellWidget(row, 3, btn);
         }
-
-        for(int c=0; c<m_table->columnCount(); ++c) {
-            if(m_table->item(row, c)) m_table->item(row, c)->setForeground(QBrush(Qt::black));
-        }
         row++;
     }
+    if (m_table->rowCount() > 0) m_table->selectRow(0);
 }
 
 void QueriesWindow::runSelectedQuery()
@@ -127,28 +141,43 @@ void QueriesWindow::runSelectedQuery()
 
     QString num = m_table->item(r, 0)->text();
     QueryInfo target;
-    for(const auto &q : m_allQueries) if(q.number == num) { target = q; break; }
+    bool found = false;
+    for(const auto &q : m_allQueries) {
+        if(q.number == num) { target = q; found = true; break; }
+    }
 
-    if (target.sqlText.isEmpty()) return;
+    if (!found || target.sqlText.isEmpty()) return;
 
     QStringList cols;
     QList<QList<QVariant>> rows;
 
+    QApplication::setOverrideCursor(Qt::WaitCursor);
     if (m_dbManager->isHttpMode()) {
         bool ok;
         QJsonArray data = m_dbManager->executeCustomQueryHttp(target.sqlText, &ok);
-        if (data.isEmpty()) return;
-        QJsonObject first = data[0].toObject();
-        cols = first.keys();
-        for (int i = 0; i < data.size(); ++i) {
-            QList<QVariant> row;
-            QJsonObject obj = data[i].toObject();
-            foreach (const QString &col, cols) row << obj[col].toVariant();
-            rows << row;
+        if (data.isEmpty() && !ok) {
+            QApplication::restoreOverrideCursor();
+            QMessageBox::critical(this, "Ошибка", "Запрос не вернул данных или произошла ошибка.");
+            return;
+        }
+        if (!data.isEmpty()) {
+            QJsonObject first = data[0].toObject();
+            cols = first.keys();
+            for (int i = 0; i < data.size(); ++i) {
+                QList<QVariant> row;
+                QJsonObject obj = data[i].toObject();
+                foreach (const QString &col, cols) row << obj[col].toVariant();
+                rows << row;
+            }
         }
     } else {
         bool ok;
         QSqlQuery query = m_dbManager->executeQuery(target.sqlText, &ok);
+        if (!ok) {
+            QApplication::restoreOverrideCursor();
+            QMessageBox::critical(this, "Ошибка БД", m_dbManager->lastError());
+            return;
+        }
         QSqlRecord rec = query.record();
         for (int i = 0; i < rec.count(); ++i) cols << rec.fieldName(i);
         while (query.next()) {
@@ -156,6 +185,12 @@ void QueriesWindow::runSelectedQuery()
             for (int i = 0; i < cols.size(); ++i) row << query.value(i);
             rows << row;
         }
+    }
+    QApplication::restoreOverrideCursor();
+
+    if (cols.isEmpty()) {
+        QMessageBox::information(this, "Результат", "Запрос выполнен успешно, но не вернул строк.");
+        return;
     }
 
     QueryResultWindow *res = new QueryResultWindow(target.number + ": " + target.description, cols, rows, m_dbManager, this);
@@ -167,7 +202,8 @@ void QueriesWindow::goBack() { hide(); }
 void QueriesWindow::setupStyles() {
     if (m_isClassicUI) {
         setStyleSheet("QWidget { background-color: #c0c0c0; color: black; }"
-                      "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; }");
+                      "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; selection-background-color: #000080; selection-color: white; }"
+                      "QHeaderView::section { background-color: #c0c0c0; color: black; border: 1px solid black; }");
     }
 }
 
