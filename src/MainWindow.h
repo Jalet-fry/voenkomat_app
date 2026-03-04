@@ -24,7 +24,7 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
 
 private slots:
-    // Операции классического режима
+    // Операции классического режима (Лаб 2)
     void viewData();
     void addRecord();
     void updateRecord();
