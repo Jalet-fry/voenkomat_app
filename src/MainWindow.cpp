@@ -42,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_isClassicUI) {
             refreshTablesMenu();
             viewActiveTable();
+            // СТАРТОВЫЙ ФОКУС НА ФИЛЬТРЫ
             if (m_filterColumnCombo) m_filterColumnCombo->setFocus();
         }
     }
@@ -161,7 +162,7 @@ void MainWindow::setupModernUI()
                 updateConnectionStatus();
                 if(m_isClassicUI) viewActiveTable();
                 QMessageBox msg(this); msg.setStyleSheet(dialogStyle);
-                msg.setWindowTitle("Успех"); msg.setText("Режим администратора включен!"); msg.setIcon(QMessageBox::Information); msg.exec();
+                msg.setWindowTitle("Успех"); msg.setText("Режим администратора активирован."); msg.setIcon(QMessageBox::Information); msg.exec();
             } else {
                 QMessageBox msg(this); msg.setStyleSheet(dialogStyle);
                 msg.setWindowTitle("Ошибка"); msg.setText("Неверный пароль!"); msg.setIcon(QMessageBox::Critical); msg.exec();
@@ -175,9 +176,9 @@ void MainWindow::setupModernUI()
         confirm.setText("Вы действительно хотите выйти из режима администратора?");
         confirm.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
         confirm.setIcon(QMessageBox::Question);
-        confirm.setStyleSheet(dialogStyle);
         if(confirm.button(QMessageBox::Yes)) confirm.button(QMessageBox::Yes)->setText("Да, выйти");
         if(confirm.button(QMessageBox::No)) confirm.button(QMessageBox::No)->setText("Отмена");
+        confirm.setStyleSheet(dialogStyle);
         if (confirm.exec() == QMessageBox::Yes) {
             m_dbManager->setAuthToken("");
             updateConnectionStatus();
@@ -196,6 +197,7 @@ void MainWindow::setupClassicUI()
     if (!m_menuBar) { m_menuBar = new QMenuBar(this); setMenuBar(m_menuBar); }
     m_menuBar->show();
     m_menuBar->clear();
+    m_menuBar->setFocusPolicy(Qt::NoFocus); // МЕНЮ НЕ ПЕРЕХВАТЫВАЕТ TAB
 
     QMenu *fileMenu = m_menuBar->addMenu("&File");
     fileMenu->addAction("Exit", QKeySequence("Ctrl+E"), this, &MainWindow::exitApp);
@@ -244,7 +246,7 @@ void MainWindow::setupClassicUI()
     m_mainTable->setTabKeyNavigation(false); // Tab ВЫХОДИТ из таблицы к фильтрам
     m_layout->addWidget(m_mainTable);
 
-    // УСТАНОВКА ЦИКЛИЧЕСКОЙ НАВИГАЦИИ TAB
+    // ЦИКЛИЧЕСКАЯ НАВИГАЦИЯ TAB
     setTabOrder(m_filterColumnCombo, m_filterValueEdit);
     setTabOrder(m_filterValueEdit, m_applyFilterBtn);
     setTabOrder(m_applyFilterBtn, m_mainTable);
@@ -300,40 +302,39 @@ void MainWindow::applyFilter()
 
 void MainWindow::showHelp() {
     QMessageBox helpBox(this);
-    helpBox.setWindowTitle("Справка по системе (CUA Standard)");
+    helpBox.setWindowTitle("Справка по управлению (CUA Standard)");
     QString h =
         "<div style='background-color: #ffffff; color: #000000; padding: 15px; font-family: Segoe UI;'>"
-        "<h2 style='color: #2f3640;'>Руководство оператора (Лаб №1 и №2)</h2>"
-        "<p>Программа построена по стандарту <b>Common User Access (CUA)</b>. Основное управление клавиатурное.</p>"
+        "<h2>Краткое руководство по управлению</h2>"
+        "<p>Программа построена по стандарту <b>Common User Access (CUA)</b>. Основное управление осуществляется клавиатурой.</p>"
         "<h3>1. Горячие клавиши (Hotkeys):</h3>"
         "<table border='1' cellpadding='5' style='border-collapse: collapse; width: 100%;'>"
-        "<tr><td><b>Ctrl + A</b></td><td>Add: Добавление новой записи в активную таблицу</td></tr>"
-        "<tr><td><b>Ctrl + V</b></td><td>View: Обновление/просмотр данных таблицы</td></tr>"
-        "<tr><td><b>Ctrl + U</b></td><td>Update: Редактирование выбранной записи</td></tr>"
+        "<tr><td><b>Ctrl + A</b></td><td>Add: Добавить новую запись в текущую таблицу</td></tr>"
+        "<tr><td><b>Ctrl + V</b></td><td>View: Обновить данные таблицы</td></tr>"
+        "<tr><td><b>Ctrl + U</b></td><td>Update: Изменить выбранную запись</td></tr>"
         "<tr><td><b>Ctrl + D</b></td><td>Delete: Удаление записи (требуется ввод ID)</td></tr>"
         "<tr><td><b>Ctrl + Q</b></td><td>Queries: Окно выполнения спец. запросов</td></tr>"
-        "<tr><td><b>Ctrl + S</b></td><td>Save: Сохранение результатов в JSON файл</td></tr>"
-        "<tr><td><b>Ctrl + B</b></td><td>Backup: Создание бэкапа БД (только Admin)</td></tr>"
-        "<tr><td><b>Ctrl + E</b></td><td>Exit: Выход из приложения</td></tr>"
+        "<tr><td><b>Ctrl + S</b></td><td>Save: Сохранить таблицу в JSON файл</td></tr>"
+        "<tr><td><b>Ctrl + B</b></td><td>Backup: Создать бэкап всей базы (Admin)</td></tr>"
+        "<tr><td><b>Ctrl + E</b></td><td>Exit: Закрыть приложение</td></tr>"
         "</table>"
-        "<h3>2. Навигация и Меню:</h3>"
+        "<h3>2. Навигация:</h3>"
         "<ul>"
-        "<li><b>F10</b>: Активация главного меню.</li>"
-        "<li><b>Alt + F / T / O</b>: Доступ к разделам File, Tables, Operations.</li>"
-        "<li><b>Tab / Shift+Tab</b>: Перемещение фокуса между полями.</li>"
-        "<li><b>Arrows (Стрелки)</b>: Перемещение внутри таблиц.</li>"
+        "<li><b>F10</b>: Активировать верхнее меню.</li>"
+        "<li><b>Alt + F / T / O</b>: Быстрый доступ к File, Tables, Operations.</li>"
+        "<li><b>Tab / Shift+Tab</b>: Переход между полями и таблицей.</li>"
+        "<li><b>Arrows (Стрелки)</b>: Перемещение внутри таблиц и полей.</li>"
         "<li><b>Enter / Esc</b>: Подтверждение (OK) или Отмена (Cancel) в окнах.</li>"
         "</ul>"
         "<h3>3. Роли доступа:</h3>"
         "<ul>"
-        "<li><b>GUEST</b> (Пользователь): Просмотр данных, правка динамических таблиц.</li>"
-        "<li><b>ADMIN</b> (Суперпользователь): Полный доступ + изменение справочников + бэкап.</li>"
+        "<li><b>Guest</b>: Просмотр данных, редактирование динамических таблиц.</li>"
+        "<li><b>Admin</b>: Полный доступ + Справочники + Бэкап. Пароль: <b>admin</b></li>"
         "</ul>"
-        "<p><i>Пароль администратора по умолчанию: <b>admin</b></i></p>"
         "</div>";
     helpBox.setText(h);
     helpBox.setIcon(QMessageBox::Information);
-    helpBox.setStyleSheet("QMessageBox { background-color: #ffffff; min-width: 600px; } QLabel { color: #000000; } QPushButton { background-color: #2f3640; color: #ffffff; padding: 10px; }");
+    helpBox.setStyleSheet("QMessageBox { background-color: #ffffff; min-width: 650px; } QLabel { color: #000000; } QPushButton { background-color: #2f3640; color: #ffffff; padding: 10px; }");
     helpBox.exec();
 }
 
@@ -344,7 +345,10 @@ void MainWindow::addRecord() {
         msg.setIcon(QMessageBox::Warning); msg.setStyleSheet("QMessageBox { background-color: #ffffff; } QLabel { color: #000000; }"); msg.exec();
         return;
     }
-    RecordDialog d(m_dbManager, m_activeTable, this); if(d.exec()==QDialog::Accepted) applyFilter();
+    RecordDialog d(m_dbManager, m_activeTable, this);
+    // ПРИНУДИТЕЛЬНЫЙ КОНТРАСТ ДЛЯ RecordDialog
+    d.setStyleSheet("QDialog { background-color: #ffffff; } QLineEdit, QComboBox { background-color: #ffffff; color: #000000; border: 1px solid #2f3640; } QLabel { color: #000000; }");
+    if(d.exec()==QDialog::Accepted) applyFilter();
 }
 
 void MainWindow::updateRecord() {
@@ -358,7 +362,9 @@ void MainWindow::updateRecord() {
         return;
     }
     int id = m_mainTable->item(r, 0)->text().toInt();
-    RecordDialog d(m_dbManager, m_activeTable, this, id); if(d.exec()==QDialog::Accepted) applyFilter();
+    RecordDialog d(m_dbManager, m_activeTable, this, id);
+    d.setStyleSheet("QDialog { background-color: #ffffff; } QLineEdit, QComboBox { background-color: #ffffff; color: #000000; border: 1px solid #2f3640; } QLabel { color: #000000; }");
+    if(d.exec()==QDialog::Accepted) applyFilter();
 }
 
 void MainWindow::deleteRecord() {
@@ -385,8 +391,11 @@ void MainWindow::saveQueryResult() {
     QFile file(fileName);
     if (file.open(QIODevice::WriteOnly)) {
         file.write(QJsonDocument(data).toJson()); file.close();
-        QMessageBox msg(this); msg.setWindowTitle("Успех"); msg.setText("Результаты сохранены в:\n" + fileName);
-        msg.setStyleSheet("QMessageBox { background-color: #ffffff; } QLabel { color: #000000; }"); msg.exec();
+        QMessageBox msg(this); msg.setWindowTitle("Успех сохранения");
+        msg.setText("Результаты успешно сохранены в файл.\nПуть: " + fileName);
+        msg.setIcon(QMessageBox::Information);
+        msg.setStyleSheet("QMessageBox { background-color: #ffffff; } QLabel { color: #000000; }");
+        msg.exec();
     }
 }
 
@@ -394,10 +403,13 @@ void MainWindow::exportAllData() { saveQueryResult(); }
 
 void MainWindow::createBackup() {
     bool ok;
-    QString pass = QInputDialog::getText(this, "Бэкап", "Введите пароль администратора:", QLineEdit::Password, "", &ok);
-    if (!ok || pass != "admin") { if(ok) QMessageBox::critical(this, "Отказ", "Неверный пароль!"); return; }
+    QString pass = QInputDialog::getText(this, "Бэкап базы данных", "Введите пароль суперпользователя:", QLineEdit::Password, "", &ok);
+    if (!ok) return;
+    if (pass != "admin") { QMessageBox::critical(this, "Отказ", "Неверный пароль!"); return; }
+
     m_dbManager->setAuthToken("admin");
     if (m_dbManager->createBackupHttp()) QMessageBox::information(this, "Успех", "Бэкап успешно создан на сервере!");
+    else QMessageBox::critical(this, "Ошибка", m_dbManager->lastError());
 }
 
 void MainWindow::restoreFromBackup() {
@@ -434,6 +446,7 @@ void MainWindow::setupStyles() {
         setStyleSheet(
             "QMainWindow { background-color: #ffffff; }"
             "QMenuBar { background-color: #ffffff; color: #000000; border-bottom: 1px solid #2f3640; font-weight: bold; }"
+            "QMenuBar::item { color: #000000; background: transparent; }"
             "QMenuBar::item:selected { background-color: #2f3640; color: #ffffff; }"
             "QMenu { background-color: #ffffff; color: #000000; border: 1px solid #2f3640; }"
             "QMenu::item:selected { background-color: #2f3640; color: #ffffff; }"
