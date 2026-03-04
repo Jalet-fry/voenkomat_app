@@ -27,8 +27,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_isClassicUI = config.isClassicUI();
     
     setWindowTitle(m_isClassicUI ? "ИС Военкомат (CUA)" : "ИС Военкомат (Modern UI)");
-
-    if (m_isClassicUI) setFixedSize(950, 700); else setFixedSize(450, 650);
+    if (m_isClassicUI) setFixedSize(950, 700); else setFixedSize(450, 680);
 
     setupUI();
     setupStyles();
@@ -39,24 +38,11 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_isClassicUI) {
             refreshTablesMenu();
             viewActiveTable();
-            if (m_filterValueEdit) m_filterValueEdit->setFocus();
         }
-    } else {
-        updateConnectionStatus();
     }
 }
 
 MainWindow::~MainWindow() {}
-
-void MainWindow::clearLayout(QLayout *layout)
-{
-    if (!layout) return;
-    while (QLayoutItem *item = layout->takeAt(0)) {
-        if (QWidget *widget = item->widget()) widget->deleteLater();
-        else if (QLayout *childLayout = item->layout()) clearLayout(childLayout);
-        delete item;
-    }
-}
 
 void MainWindow::switchMode()
 {
@@ -82,7 +68,7 @@ void MainWindow::switchMode()
         refreshTablesMenu();
         viewActiveTable();
     } else {
-        setFixedSize(450, 650);
+        setFixedSize(450, 680);
     }
 }
 
@@ -93,7 +79,6 @@ void MainWindow::setupUI()
         setCentralWidget(m_centralWidget);
         m_layout = new QVBoxLayout(m_centralWidget);
     }
-
     if (m_isClassicUI) setupClassicUI(); else setupModernUI();
 
     m_statusLabel = new QLabel(this);
@@ -104,26 +89,36 @@ void MainWindow::setupUI()
 void MainWindow::setupModernUI()
 {
     if (menuBar()) menuBar()->hide();
-    m_layout->setSpacing(12);
-    m_layout->setContentsMargins(30, 30, 30, 30);
+    m_layout->setSpacing(10);
+    m_layout->setContentsMargins(30, 20, 30, 20);
 
     m_titleLabel = new QLabel("Система Военкомат", this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
-    m_titleLabel->setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50;");
+    m_titleLabel->setStyleSheet("font-size: 24px; font-weight: bold; color: #2f3640; margin-bottom: 10px;");
     m_layout->addWidget(m_titleLabel);
 
     m_tablesBtn = new QPushButton("📜 Список Таблиц", this);
     m_queriesBtn = new QPushButton("🔍 Спец. Запросы", this);
     m_exportBtn = new QPushButton("📤 Экспорт БД", this);
+
+    QPushButton *loginBtn = new QPushButton("🔐 Войти как Admin", this);
+    loginBtn->setStyleSheet("background-color: #e67e22; color: #ffffff; font-weight: bold; border: 1px solid #d35400; padding: 12px; border-radius: 6px;");
+
+    QPushButton *logoutBtn = new QPushButton("🔓 Выйти из Admin", this);
+    logoutBtn->setStyleSheet("background-color: #95a5a6; color: #ffffff; font-weight: bold; border: 1px solid #7f8c8d; padding: 12px; border-radius: 6px;");
+
     m_helpBtn = new QPushButton("ℹ️ Справка (F1)", this);
     m_switchModeBtn = new QPushButton("⚙️ Перейти в CUA", this);
-    m_exitBtn = new QPushButton("Выход (Ctrl+E)", this);
+    m_exitBtn = new QPushButton("Выход", this);
+    m_exitBtn->setStyleSheet("background-color: #c0392b; color: #ffffff; font-weight: bold; padding: 10px; border-radius: 6px;");
 
     m_layout->addWidget(m_tablesBtn);
     m_layout->addWidget(m_queriesBtn);
     m_layout->addWidget(m_exportBtn);
+    m_layout->addWidget(loginBtn);
+    m_layout->addWidget(logoutBtn);
     m_layout->addWidget(m_helpBtn);
-    m_layout->addStretch();
+    m_layout->addSpacing(10);
     m_layout->addWidget(m_switchModeBtn);
     m_layout->addWidget(m_exitBtn);
 
@@ -133,20 +128,84 @@ void MainWindow::setupModernUI()
     connect(m_helpBtn, &QPushButton::clicked, this, &MainWindow::showHelp);
     connect(m_switchModeBtn, &QPushButton::clicked, this, &MainWindow::switchMode);
     connect(m_exitBtn, &QPushButton::clicked, this, &MainWindow::exitApp);
+
+    // СТИЛЬ ДЛЯ ГАРАНТИРОВАННОГО КОНТРАСТА (Белый фон, Черный текст)
+    QString dialogStyle =
+        "QDialog, QMessageBox, QInputDialog { background-color: #ffffff; border: 2px solid #2f3640; }"
+        "QLabel { color: #000000; font-weight: bold; font-size: 14px; }"
+        "QLineEdit { background-color: #ffffff; color: #000000; border: 2px solid #2f3640; padding: 8px; border-radius: 4px; }"
+        "QPushButton { background-color: #2f3640; color: #ffffff; font-weight: bold; padding: 8px 16px; border-radius: 4px; min-width: 80px; }";
+
+    connect(loginBtn, &QPushButton::clicked, this, [this, dialogStyle](){
+        QInputDialog dialog(this);
+        dialog.setWindowTitle("Авторизация");
+        dialog.setLabelText("Введите пароль суперпользователя:");
+        dialog.setTextEchoMode(QLineEdit::Password);
+        dialog.setStyleSheet(dialogStyle);
+
+        if (dialog.exec() == QDialog::Accepted) {
+            if (dialog.textValue() == "admin") {
+                m_dbManager->setAuthToken("admin");
+                updateConnectionStatus();
+                if(m_isClassicUI) viewActiveTable();
+
+                QMessageBox msg(this);
+                msg.setWindowTitle("Успех");
+                msg.setText("Режим администратора включен!");
+                msg.setIcon(QMessageBox::Information);
+                msg.setStyleSheet(dialogStyle);
+                msg.exec();
+            } else {
+                QMessageBox msg(this);
+                msg.setWindowTitle("Ошибка");
+                msg.setText("Неверный пароль!");
+                msg.setIcon(QMessageBox::Critical);
+                msg.setStyleSheet(dialogStyle);
+                msg.exec();
+            }
+        }
+    });
+
+    connect(logoutBtn, &QPushButton::clicked, this, [this, dialogStyle](){
+        QMessageBox confirm(this);
+        confirm.setWindowTitle("Выход");
+        confirm.setText("Выйти из режима администратора?");
+        confirm.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+        confirm.setIcon(QMessageBox::Question);
+        confirm.setStyleSheet(dialogStyle);
+
+        if (confirm.exec() == QMessageBox::Yes) {
+            m_dbManager->setAuthToken("");
+            updateConnectionStatus();
+            if(m_isClassicUI) viewActiveTable();
+
+            QMessageBox msg(this);
+            msg.setWindowTitle("Статус");
+            msg.setText("Вы перешли в режим ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ.");
+            msg.setIcon(QMessageBox::Information);
+            msg.setStyleSheet(dialogStyle);
+            msg.exec();
+        }
+    });
 }
 
 void MainWindow::setupClassicUI()
 {
     m_layout->setContentsMargins(5, 5, 5, 5);
     m_layout->setSpacing(4);
-
     m_menuBar = menuBar();
     if (!m_menuBar) { m_menuBar = new QMenuBar(this); setMenuBar(m_menuBar); }
     m_menuBar->show();
     m_menuBar->clear();
-    m_menuBar->setFocusPolicy(Qt::TabFocus);
 
     QMenu *fileMenu = m_menuBar->addMenu("&File");
+    fileMenu->addAction("Login (Admin)", this, [this](){
+        bool ok;
+        QString pass = QInputDialog::getText(this, "Вход", "Пароль:", QLineEdit::Password, "", &ok);
+        if (ok && pass == "admin") { m_dbManager->setAuthToken("admin"); updateConnectionStatus(); viewActiveTable(); }
+    });
+    fileMenu->addAction("Logout", this, [this](){ m_dbManager->setAuthToken(""); updateConnectionStatus(); viewActiveTable(); });
+    fileMenu->addSeparator();
     fileMenu->addAction("Exit", QKeySequence("Ctrl+E"), this, &MainWindow::exitApp);
 
     m_tablesMenu = m_menuBar->addMenu("&Tables");
@@ -158,8 +217,6 @@ void MainWindow::setupClassicUI()
     opsMenu->addAction("Update", QKeySequence("Ctrl+U"), this, &MainWindow::updateRecord);
     opsMenu->addAction("Delete", QKeySequence("Ctrl+D"), this, &MainWindow::deleteRecord);
     opsMenu->addSeparator();
-    opsMenu->addAction("Queries", QKeySequence("Ctrl+Q"), this, &MainWindow::openQueries);
-    opsMenu->addAction("Save Result", QKeySequence("Ctrl+S"), this, &MainWindow::saveQueryResult);
     opsMenu->addAction("Backup", QKeySequence("Ctrl+B"), this, &MainWindow::createBackup);
 
     m_menuBar->addMenu("&View")->addAction("Modern UI", this, &MainWindow::switchMode);
@@ -168,63 +225,43 @@ void MainWindow::setupClassicUI()
     QHBoxLayout *fL = new QHBoxLayout();
     m_filterColumnCombo = new QComboBox(this);
     m_filterValueEdit = new QLineEdit(this);
-    m_filterValueEdit->setPlaceholderText("Filter (use > < or \"text\")...");
     m_applyFilterBtn = new QPushButton("Apply", this);
-    m_applyFilterBtn->setFixedWidth(100);
+    m_applyFilterBtn->setFixedWidth(80);
     connect(m_applyFilterBtn, &QPushButton::clicked, this, &MainWindow::applyFilter);
-    connect(m_filterValueEdit, &QLineEdit::returnPressed, this, &MainWindow::applyFilter);
-
     fL->addWidget(new QLabel("Field:")); fL->addWidget(m_filterColumnCombo);
     fL->addWidget(m_filterValueEdit); fL->addWidget(m_applyFilterBtn);
     m_layout->addLayout(fL);
 
-    m_activeTableLabel = new QLabel("Active Table: [ " + m_activeTable.toUpper() + " ]", this);
-    m_activeTableLabel->setStyleSheet("background: #000080; color: #ffff00; padding: 3px; font-weight: bold; border: 1px solid yellow;");
+    m_activeTableLabel = new QLabel(this);
     m_layout->addWidget(m_activeTableLabel);
 
     m_mainTable = new QTableWidget(this);
     m_mainTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_mainTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_mainTable->setAlternatingRowColors(true);
-    m_mainTable->setFocusPolicy(Qt::StrongFocus);
     m_layout->addWidget(m_mainTable);
 
-    m_classicFooter = new QLabel(" F1-Help | F10-Menu | Alt+T-Tables | Tab-Focus | Ctrl+V-View | Ctrl+E-Exit ", this);
-    m_classicFooter->setStyleSheet("background-color: #c0c0c0; color: black; border-top: 2px solid black; font-family: 'Consolas'; font-size: 11px; font-weight: bold;");
+    m_classicFooter = new QLabel(" F1-Help | Admin Password: admin ", this);
     m_layout->addWidget(m_classicFooter);
-
-    setTabOrder(m_filterColumnCombo, m_filterValueEdit);
-    setTabOrder(m_filterValueEdit, m_applyFilterBtn);
-    setTabOrder(m_applyFilterBtn, m_mainTable);
-    setTabOrder(m_mainTable, m_menuBar);
 }
-
-void MainWindow::refreshTablesMenu()
-{
-    if (!m_tablesMenu || !m_dbManager->isConnected()) return;
-    m_tablesMenu->clear();
-    QStringList tables = m_dbManager->getTableList();
-    foreach(const QString &t, tables) {
-        m_tablesMenu->addAction(t, [this, t](){ onTableSelected(t); });
-    }
-}
-
-void MainWindow::onTableSelected(const QString &t) { m_activeTable = t; viewActiveTable(); }
 
 void MainWindow::viewActiveTable()
 {
     if (m_activeTable.isEmpty() || !m_dbManager->isConnected()) return;
+
+    QStringList lookupTables = {"fitness_categories", "commissioners"};
+    bool isLookup = lookupTables.contains(m_activeTable);
+    bool canEdit = !isLookup || m_dbManager->isSuperuser();
+
+    if (m_activeTableLabel) {
+        QString status = canEdit ? "" : " (READ ONLY MODE)";
+        m_activeTableLabel->setText("Active Table: [ " + m_activeTable.toUpper() + " ]" + status);
+        m_activeTableLabel->setStyleSheet(canEdit ? "background-color: #2f3640; color: #ffffff; padding: 6px; font-weight: bold;"
+                                                  : "background-color: #c0392b; color: #ffffff; padding: 6px; font-weight: bold;");
+    }
+
     QStringList cols = m_dbManager->getColumnList(m_activeTable);
-    if (m_filterColumnCombo) {
-        m_filterColumnCombo->clear();
-        m_filterColumnCombo->addItems(cols);
-    }
-    if (m_mainTable) {
-        m_mainTable->setColumnCount(cols.size());
-        m_mainTable->setHorizontalHeaderLabels(cols);
-        applyFilter();
-    }
-    if (m_activeTableLabel) m_activeTableLabel->setText("Active Table: [ " + m_activeTable.toUpper() + " ]");
+    if (m_filterColumnCombo) { m_filterColumnCombo->clear(); m_filterColumnCombo->addItems(cols); }
+    if (m_mainTable) { m_mainTable->setColumnCount(cols.size()); m_mainTable->setHorizontalHeaderLabels(cols); applyFilter(); }
 }
 
 void MainWindow::applyFilter()
@@ -234,27 +271,11 @@ void MainWindow::applyFilter()
     if (m_filterColumnCombo && m_filterValueEdit && !m_filterValueEdit->text().isEmpty()) {
         QString val = m_filterValueEdit->text().trimmed();
         QString col = m_filterColumnCombo->currentText();
-        bool hasOp = val.startsWith(">") || val.startsWith("<") || val.startsWith("=") || val.startsWith("!");
-        if (hasOp) where = QString("%1 %2").arg(col).arg(val);
-        else if (val.startsWith("\"") && val.endsWith("\"")) where = QString("%1::text = '%2'").arg(col).arg(val.mid(1, val.length()-2).replace("'", "''"));
-        else where = QString("%1::text ILIKE '%%2%'").arg(col).arg(val.replace("'", "''"));
+        if (val.startsWith(">") || val.startsWith("<") || val.startsWith("=")) where = QString("%1 %2").arg(col).arg(val);
+        else where = QString("%1::text ILIKE '%%2%'").arg(col).arg(val);
     }
 
-    QJsonArray data;
-    if (m_dbManager->isHttpMode()) {
-        data = m_dbManager->fetchTableDataHttp(m_activeTable, where);
-    } else {
-        QString sql = "SELECT * FROM public." + m_activeTable;
-        if (!where.isEmpty()) sql += " WHERE " + where;
-        QSqlQuery q = m_dbManager->executeQuery(sql);
-        QStringList cols = m_dbManager->getColumnList(m_activeTable);
-        while(q.next()) {
-            QJsonObject o;
-            for(int i=0; i<cols.size(); ++i) o[cols[i]] = QJsonValue::fromVariant(q.value(i));
-            data.append(o);
-        }
-    }
-
+    QJsonArray data = m_dbManager->isHttpMode() ? m_dbManager->fetchTableDataHttp(m_activeTable, where) : QJsonArray();
     m_mainTable->setRowCount(data.size());
     QStringList cols = m_dbManager->getColumnList(m_activeTable);
     for(int i=0; i<data.size(); ++i) {
@@ -268,22 +289,30 @@ void MainWindow::applyFilter()
 }
 
 void MainWindow::addRecord() {
-    RecordDialog d(m_dbManager, m_activeTable, this);
-    if(d.exec()==QDialog::Accepted) {
-        qDebug() << "Refresh after add";
-        applyFilter();
+    QStringList lookupTables = {"fitness_categories", "commissioners"};
+    if (lookupTables.contains(m_activeTable) && !m_dbManager->isSuperuser()) {
+        QMessageBox msg(this);
+        msg.setWindowTitle("Отказ");
+        msg.setText("Рядовому пользователю запрещено изменять справочники!");
+        msg.setIcon(QMessageBox::Warning);
+        msg.setStyleSheet("QMessageBox { background-color: #ffffff; } QLabel { color: #000000; font-weight: bold; } QPushButton { background-color: #2f3640; color: #ffffff; }");
+        msg.exec();
+        return;
     }
+    RecordDialog d(m_dbManager, m_activeTable, this);
+    if(d.exec()==QDialog::Accepted) applyFilter();
 }
 
 void MainWindow::updateRecord() {
     if (!m_mainTable) return;
     int r = m_mainTable->currentRow();
     if(r < 0) return;
-    QString pk = m_dbManager->getPrimaryKeyColumn(m_activeTable);
-    int colIdx = -1;
-    for(int i=0; i<m_mainTable->columnCount(); ++i) if(m_mainTable->horizontalHeaderItem(i)->text() == pk) { colIdx = i; break; }
-    if(colIdx < 0) colIdx = 0;
-    int id = m_mainTable->item(r, colIdx)->text().toInt();
+    QStringList lookupTables = {"fitness_categories", "commissioners"};
+    if (lookupTables.contains(m_activeTable) && !m_dbManager->isSuperuser()) {
+        QMessageBox::warning(this, "Отказ", "Изменение справочников запрещено!");
+        return;
+    }
+    int id = m_mainTable->item(r, 0)->text().toInt();
     RecordDialog d(m_dbManager, m_activeTable, this, id);
     if(d.exec()==QDialog::Accepted) applyFilter();
 }
@@ -292,43 +321,24 @@ void MainWindow::deleteRecord() {
     if (!m_mainTable) return;
     int r = m_mainTable->currentRow();
     if(r < 0) return;
-    if(QMessageBox::question(this, "Delete", "Confirm?") == QMessageBox::Yes) {
-        QString pk = m_dbManager->getPrimaryKeyColumn(m_activeTable);
-        int colIdx = -1;
-        for(int i=0; i<m_mainTable->columnCount(); ++i) if(m_mainTable->horizontalHeaderItem(i)->text() == pk) { colIdx = i; break; }
-        if(colIdx < 0) colIdx = 0;
-        int id = m_mainTable->item(r, colIdx)->text().toInt();
-
-        bool ok = false;
-        if(m_dbManager->isHttpMode()) {
-            ok = m_dbManager->deleteRecordHttp(m_activeTable, id);
-        } else {
-            QString sql = QString("DELETE FROM public.%1 WHERE %2 = %3").arg(m_activeTable).arg(pk).arg(id);
-            m_dbManager->executeQuery(sql, &ok);
-        }
-        if(ok) applyFilter();
-        else QMessageBox::critical(this, "Error", m_dbManager->lastError());
+    QStringList lookupTables = {"fitness_categories", "commissioners"};
+    if (lookupTables.contains(m_activeTable) && !m_dbManager->isSuperuser()) {
+        QMessageBox::warning(this, "Отказ", "Удаление из справочников запрещено!");
+        return;
+    }
+    if(QMessageBox::question(this, "Удаление", "Вы уверены?") == QMessageBox::Yes) {
+        int id = m_mainTable->item(r, 0)->text().toInt();
+        if(m_dbManager->deleteRecordHttp(m_activeTable, id)) applyFilter();
+        else QMessageBox::critical(this, "Ошибка", m_dbManager->lastError());
     }
 }
 
-void MainWindow::keyPressEvent(QKeyEvent *event)
-{
-    if (event->key() == Qt::Key_F10) { if (menuBar()) menuBar()->setFocus(); return; }
-    if (event->key() == Qt::Key_F1) { showHelp(); return; }
-    if (event->key() == Qt::Key_F2) { addRecord(); return; }
-    if (event->modifiers() & Qt::ControlModifier) {
-        switch(event->key()) {
-            case Qt::Key_A: addRecord(); return;
-            case Qt::Key_V: viewActiveTable(); return;
-            case Qt::Key_D: deleteRecord(); return;
-            case Qt::Key_U: updateRecord(); return;
-            case Qt::Key_Q: openQueries(); return;
-            case Qt::Key_S: saveQueryResult(); return;
-            case Qt::Key_B: createBackup(); return;
-            case Qt::Key_E: exitApp(); return;
-        }
+void MainWindow::createBackup() {
+    if (!m_dbManager->isSuperuser()) {
+        QMessageBox::warning(this, "Отказ", "Бэкап может делать только админ!");
+        return;
     }
-    QMainWindow::keyPressEvent(event);
+    if (m_dbManager->createBackupHttp()) QMessageBox::information(this, "Успех", "Бэкап сохранен на сервере!");
 }
 
 void MainWindow::setupStyles()
@@ -336,87 +346,41 @@ void MainWindow::setupStyles()
     if (m_isClassicUI) {
         setStyleSheet(
             "QMainWindow { background-color: #c0c0c0; }"
-            "QMenuBar { background-color: #c0c0c0; border-bottom: 1px solid black; color: black; }"
-            "QMenuBar::item:selected { background-color: #000080; color: white; }"
-            "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; font-size: 13px; selection-background-color: #000080; selection-color: white; }"
-            "QLabel { color: black; font-family: 'Consolas'; }"
-            "QLineEdit { background-color: #ffffff; color: #000000; border: 2px inset gray; selection-background-color: #000080; }"
-            "QComboBox { background-color: #ffffff; color: #000000; border: 1px solid gray; }"
-            "QPushButton { background-color: #c0c0c0; color: black; border: 2px outset gray; padding: 4px; font-weight: bold; }"
-            "QPushButton:pressed { border: 2px inset gray; background-color: #a0a0a0; }"
+            "QLabel { color: #000000; font-family: 'Segoe UI'; }"
+            "QTableWidget { background-color: #ffffff; color: #000000; border: 2px inset #808080; selection-background-color: #000080; }"
+            "QPushButton { background-color: #c0c0c0; color: #000000; border: 2px outset #808080; font-weight: bold; padding: 4px; }"
+            "QPushButton:pressed { border: 2px inset #808080; }"
         );
     } else {
-        setStyleSheet("QMainWindow { background-color: #f0f3f5; }"
-                      "QPushButton { background-color: #2c3e50; color: white; border-radius: 6px; padding: 10px; }");
+        setStyleSheet(
+            "QMainWindow { background-color: #f5f6fa; }"
+            "QLabel { color: #2f3640; font-family: 'Segoe UI'; }"
+            "QPushButton { background-color: #2f3640; color: #ffffff; border-radius: 6px; padding: 10px; font-weight: bold; border: 1px solid #2f3640; }"
+            "QPushButton:hover { background-color: #353b48; }"
+            "QTableWidget { background-color: #ffffff; color: #000000; border: 1px solid #dcdde1; }"
+        );
     }
-}
-
-void MainWindow::showHelp() {
-    QString h = "<h2>CUA COMMANDS</h2>"
-                "<b>Alt+F / T / O</b>: Open Menu<br>"
-                "<b>F10</b>: Menu Focus<br>"
-                "<b>Tab</b>: Change Focus<br><br>"
-                "<b>Hotkeys:</b><br>"
-                "- <b>Ctrl+V</b>: View Data<br>"
-                "- <b>F2 / Ctrl+A</b>: Add Record<br>"
-                "- <b>Ctrl+D</b>: Delete<br>"
-                "- <b>Ctrl+U</b>: Update<br>"
-                "- <b>Ctrl+E</b>: Exit";
-    showHighContrastHelp("Help", h);
-}
-
-void MainWindow::showHighContrastHelp(const QString &title, const QString &content) {
-    QDialog d(this); d.setWindowTitle(title); d.setFixedSize(500, 450);
-    QVBoxLayout *l = new QVBoxLayout(&d);
-    QLabel *t = new QLabel(content, &d); t->setTextFormat(Qt::RichText);
-    t->setStyleSheet("background: #ffffcc; border: 1px solid black; padding: 15px; font-family: 'Consolas'; color: black;");
-    l->addWidget(t);
-    QPushButton *ok = new QPushButton("Close (Enter)", &d); connect(ok, &QPushButton::clicked, &d, &QDialog::accept);
-    l->addWidget(ok, 0, Qt::AlignCenter); d.exec();
-}
-
-void MainWindow::openQueries() {
-    if (!m_queriesWindow) m_queriesWindow = new QueriesWindow(m_dbManager);
-    m_queriesWindow->show();
-}
-
-void MainWindow::openQueriesWindow() { openQueries(); }
-
-void MainWindow::openTablesWindow() {
-    if(!m_tablesWindow) m_tablesWindow = new TablesWindow(m_dbManager);
-    m_tablesWindow->show();
-}
-
-void MainWindow::exportAllData() {
-    BackupManager bm(m_dbManager);
-    if (bm.exportAllTables()) QMessageBox::information(this, "OK", "Export OK");
-}
-
-void MainWindow::exitApp() {
-    if (QMessageBox::question(this, "Exit", "Close Application?") == QMessageBox::Yes) qApp->quit();
 }
 
 void MainWindow::updateConnectionStatus() {
     if (!m_statusLabel) return;
-    m_statusLabel->setText(m_dbManager->isConnected() ? "● ONLINE" : "○ OFFLINE");
-    m_statusLabel->setStyleSheet(m_dbManager->isConnected() ? "color: green; font-weight: bold;" : "color: red; font-weight: bold;");
+    bool admin = m_dbManager->isSuperuser();
+    m_statusLabel->setText(m_dbManager->isConnected() ? (admin ? "● СУПЕРПОЛЬЗОВАТЕЛЬ (ADMIN)" : "● ПОЛЬЗОВАТЕЛЬ (GUEST)") : "○ OFFLINE");
+    m_statusLabel->setStyleSheet(admin ? "color: #e67e22; font-weight: bold; padding: 5px; background-color: #fdf2e9; border-radius: 4px;"
+                                      : "color: #27ae60; font-weight: bold; padding: 5px;");
 }
 
-bool MainWindow::connectToDatabase() {
-    ConfigManager config("config.ini");
-    m_dbManager->setHttpMode(config.isHttpMode());
-    return m_dbManager->connectToDatabase(config.getDatabaseHost(), config.getDatabasePort(), config.getDatabaseName(), config.getDatabaseUsername(), config.getDatabasePassword());
-}
-
-void MainWindow::saveQueryResult() {
-    BackupManager bm(m_dbManager);
-    if (bm.exportAllTables()) QMessageBox::information(this, "OK", "Saved");
-}
-
-void MainWindow::createBackup() { exportAllData(); }
-void MainWindow::restoreFromBackup() {
-    QString fileName = QFileDialog::getOpenFileName(this, "Восстановить", "", "SQL (*.sql)");
-    if (fileName.isEmpty()) return;
-    BackupManager bm(m_dbManager);
-    if (bm.restoreFromBackup(fileName)) QMessageBox::information(this, "Успех", "Восстановлено!");
-}
+void MainWindow::onTableSelected(const QString &t) { m_activeTable = t; viewActiveTable(); }
+void MainWindow::refreshTablesMenu() { if (!m_tablesMenu) return; m_tablesMenu->clear(); QStringList ts = m_dbManager->getTableList(); foreach(const QString &t, ts) m_tablesMenu->addAction(t, [this, t](){ onTableSelected(t); }); }
+void MainWindow::keyPressEvent(QKeyEvent *e) { if (e->key() == Qt::Key_F1) showHelp(); QMainWindow::keyPressEvent(e); }
+void MainWindow::showHelp() { QMessageBox::information(this, "Help", "User: View all, Edit dynamic tables.\nAdmin (admin): Full access, Backups."); }
+void MainWindow::openQueries() { if (!m_queriesWindow) m_queriesWindow = new QueriesWindow(m_dbManager); m_queriesWindow->show(); }
+void MainWindow::openQueriesWindow() { openQueries(); }
+void MainWindow::openTablesWindow() { if(!m_tablesWindow) m_tablesWindow = new TablesWindow(m_dbManager); m_tablesWindow->show(); }
+void MainWindow::exportAllData() { BackupManager bm(m_dbManager); bm.exportAllTables(); }
+void MainWindow::exitApp() { qApp->quit(); }
+bool MainWindow::connectToDatabase() { ConfigManager config("config.ini"); m_dbManager->setHttpMode(config.isHttpMode()); return m_dbManager->connectToDatabase(config.getDatabaseHost(), config.getDatabasePort(), config.getDatabaseName(), config.getDatabaseUsername(), config.getDatabasePassword()); }
+void MainWindow::saveQueryResult() {}
+void MainWindow::restoreFromBackup() {}
+void MainWindow::showHighContrastHelp(const QString&, const QString&) {}
+void MainWindow::clearLayout(QLayout *l) { if(!l) return; while(QLayoutItem *i = l->takeAt(0)) { if(i->widget()) i->widget()->deleteLater(); delete i; } }

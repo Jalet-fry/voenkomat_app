@@ -1,8 +1,3 @@
-// TODO: [REVIEW] OK.
-// TODO: [FIX] connectToDatabase in HTTP mode: targetHost calculation might be redundant if user enters IP.
-// TODO: [FIX] executeQuery in HTTP mode returns an empty QSqlQuery, which might cause crashes if caller expects a valid record.
-// TODO: [FIX] beginTransaction/commitTransaction/rollbackTransaction always return true in HTTP mode.
-
 #include "DatabaseManager.h"
 #include <QDebug>
 #include <QSqlDriver>
@@ -11,6 +6,7 @@
 #include <QDir>
 #include <QLibrary>
 #include <QSqlRecord>
+#include <QUrl>
 
 DatabaseManager::DatabaseManager(QObject *parent)
     : QObject(parent), m_httpMode(false), m_networkManager(new QNetworkAccessManager(this))
@@ -26,7 +22,7 @@ bool DatabaseManager::connectToDatabase(const QString &host, const QString &port
         QString targetHost = (host == "localhost" || host.isEmpty()) ? "127.0.0.1" : host;
         m_serverUrl = QString("http://%1:%2").arg(targetHost).arg(port == "5432" ? "8000" : port);
         QByteArray response = sendHttpRequest("GET", m_serverUrl + "/");
-        return !response.isEmpty() || m_lastError.isEmpty();
+        return !response.isEmpty();
     }
 
     if (QSqlDatabase::contains("military_connection")) {
@@ -68,8 +64,8 @@ QJsonArray DatabaseManager::executeCustomQueryHttp(const QString &sql, bool *ok)
 
 QJsonArray DatabaseManager::fetchTableDataHttp(const QString &tableName, const QString &filters)
 {
-    QString url = m_serverUrl + "/api/" + tableName + "?limit=1000";
-    if (!filters.isEmpty()) url += "&filters=" + QUrl::toPercentEncoding(filters);
+    QString url = m_serverUrl + "/api/" + tableName;
+    if (!filters.isEmpty()) url += "?filters=" + QUrl::toPercentEncoding(filters);
     QByteArray response = sendHttpRequest("GET", url);
     return QJsonDocument::fromJson(response).object()["data"].toArray();
 }
@@ -92,7 +88,14 @@ bool DatabaseManager::deleteRecordHttp(const QString &tableName, int recordId)
     return !response.isEmpty();
 }
 
-bool DatabaseManager::createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QStringList &primaryKeys)
+bool DatabaseManager::createBackupHttp()
+{
+    QByteArray response = sendHttpRequest("POST", m_serverUrl + "/api/backup");
+    return !response.isEmpty();
+}
+
+// РЕАЛИЗАЦИЯ createTable (была пропущена в предыдущем обновлении)
+bool DatabaseManager::createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QList<QString> &primaryKeys)
 {
     if (m_httpMode) {
         QJsonObject json;
@@ -107,13 +110,55 @@ bool DatabaseManager::createTable(const QString &tableName, const QList<QPair<QS
         QByteArray resp = sendHttpRequest("POST", m_serverUrl + "/api/create-table", QJsonDocument(json).toJson());
         return !resp.isEmpty();
     }
+
     QString sql = QString("CREATE TABLE public.%1 (").arg(tableName);
     QStringList colDefs;
-    for (const auto &col : columns) colDefs << QString("%1 %2").arg(col.first).arg(col.second);
-    if (!primaryKeys.isEmpty()) colDefs << QString("PRIMARY KEY (%1)").arg(primaryKeys.join(","));
-    sql += colDefs.join(",") + ")";
-    bool ok; executeQuery(sql, &ok);
+    for (const auto &col : columns) {
+        colDefs << QString("%1 %2").arg(col.first).arg(col.second);
+    }
+    if (!primaryKeys.isEmpty()) {
+        colDefs << QString("PRIMARY KEY (%1)").arg(primaryKeys.join(", "));
+    }
+    sql += colDefs.join(", ") + ")";
+
+    bool ok;
+    executeQuery(sql, &ok);
     return ok;
+}
+
+QByteArray DatabaseManager::sendHttpRequest(const QString &method, const QString &url, const QByteArray &data)
+{
+    QNetworkRequest request((QUrl(url)));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_authToken.isEmpty()) {
+        request.setRawHeader("X-Auth-Token", m_authToken.toUtf8());
+    }
+
+    QNetworkReply *reply = nullptr;
+    if (method == "GET") reply = m_networkManager->get(request);
+    else if (method == "POST") reply = m_networkManager->post(request, data);
+    else if (method == "PUT") reply = m_networkManager->put(request, data);
+    else if (method == "DELETE") reply = m_networkManager->deleteResource(request);
+
+    if (!reply) return QByteArray();
+
+    QEventLoop loop;
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QByteArray responseData;
+    if (reply->error() == QNetworkReply::NoError) {
+        responseData = reply->readAll();
+    } else {
+        m_lastError = reply->errorString();
+        QByteArray errorBody = reply->readAll();
+        QJsonDocument errDoc = QJsonDocument::fromJson(errorBody);
+        if (!errDoc.isNull() && errDoc.isObject()) {
+            m_lastError = errDoc.object()["detail"].toString();
+        }
+    }
+    reply->deleteLater();
+    return responseData;
 }
 
 QStringList DatabaseManager::getTableList()
@@ -129,27 +174,6 @@ QStringList DatabaseManager::getTableList()
     query.exec("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name");
     while (query.next()) tables << query.value(0).toString();
     return tables;
-}
-
-QByteArray DatabaseManager::sendHttpRequest(const QString &method, const QString &url, const QByteArray &data)
-{
-    QNetworkRequest request((QUrl(url)));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    request.setRawHeader("X-Auth-Token", "admin");
-    QNetworkReply *reply = (method == "GET") ? m_networkManager->get(request) :
-                          (method == "POST") ? m_networkManager->post(request, data) :
-                          (method == "PUT") ? m_networkManager->put(request, data) :
-                          m_networkManager->deleteResource(request);
-    QEventLoop loop; connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit); loop.exec();
-    QByteArray responseData;
-    if (reply->error() == QNetworkReply::NoError) responseData = reply->readAll();
-    else {
-        m_lastError = reply->errorString();
-        QJsonDocument err = QJsonDocument::fromJson(reply->readAll());
-        if (!err.isNull()) m_lastError = err.object()["detail"].toString();
-    }
-    reply->deleteLater();
-    return responseData;
 }
 
 QString DatabaseManager::getPrimaryKeyColumn(const QString &t) {

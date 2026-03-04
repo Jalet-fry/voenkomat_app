@@ -1,4 +1,3 @@
-// TODO: [REVIEW] OK.
 #ifndef DATABASEMANAGER_H
 #define DATABASEMANAGER_H
 
@@ -30,6 +29,10 @@ public:
     bool isHttpMode() const { return m_httpMode; }
     QString serverUrl() const { return m_serverUrl; }
 
+    void setAuthToken(const QString &token) { m_authToken = token; }
+    QString authToken() const { return m_authToken; }
+    bool isSuperuser() const { return !m_authToken.isEmpty(); }
+
     bool connectToDatabase(const QString &host = "localhost",
                           const QString &port = "5432",
                           const QString &database = "military_db",
@@ -46,8 +49,9 @@ public:
     bool addRecordHttp(const QString &tableName, const QJsonObject &data);
     bool updateRecordHttp(const QString &tableName, int recordId, const QJsonObject &data);
     bool deleteRecordHttp(const QString &tableName, int recordId);
-    QStringList getTableList();
+    bool createBackupHttp();
 
+    QStringList getTableList();
     QString lastError() const;
     QSqlDatabase database() const;
 
@@ -93,7 +97,9 @@ public:
     QStringList getSequences(const QString &tableName);
     QList<SequenceInfo> getSequenceInfo(const QString &tableName);
 
-    bool createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QStringList &primaryKeys);
+    // Исправлено: используем явный QList<QString> для соответствия вызову
+    bool createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QList<QString> &primaryKeys);
+
     bool dropTable(const QString &tableName, bool cascade = false);
     bool addColumn(const QString &tableName, const QString &columnName, const QString &dataType, bool isNullable = true, const QVariant &defaultValue = QVariant());
     bool dropColumn(const QString &tableName, const QString &columnName);
@@ -110,6 +116,7 @@ private:
     bool m_httpMode;
     QNetworkAccessManager *m_networkManager;
     QString m_serverUrl;
+    QString m_authToken;
 };
 
 #endif // DATABASEMANAGER_H
