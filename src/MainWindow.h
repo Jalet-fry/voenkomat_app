@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
@@ -29,7 +30,7 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
 
 private slots:
-    // Основные действия
+    // Общие действия
     void openTablesWindow();
     void openQueriesWindow();
     void exportAllData();
@@ -39,16 +40,18 @@ private slots:
     void showHelp();
     void switchMode();
 
-    // CUA Операции (привязаны к выбранной таблице)
+    // Операции CUA (Operations)
+    void addRecord();
     void viewActiveTable();
-    void addRecordToActive();
-    void deleteRecordFromActive();
-    void updateRecordInActive();
-    void runSpecialQuery();
-    void createSystemBackup();
-    void saveLastQueryResult();
+    void deleteRecord();
+    void updateRecord();
+    void openQueries();
+    void saveQueryResult();
+    void createBackup();
 
-    void onTableSelectionChanged();
+    // Служебные
+    void applyFilter();
+    void onTableSelected(const QString &tableName);
 
 private:
     void setupUI();
@@ -57,6 +60,7 @@ private:
     void setupStyles();
     bool connectToDatabase();
     void clearLayout(QLayout *layout);
+    void refreshTablesMenu();
 
     void showHighContrastHelp(const QString &title, const QString &content);
 
@@ -68,20 +72,24 @@ private:
     QVBoxLayout *m_layout = nullptr;
     QLabel *m_statusLabel = nullptr;
 
-    // Modern UI
+    // Classic UI Elements
+    QMenuBar *m_menuBar = nullptr;
+    QMenu *m_tablesMenu = nullptr;
+    QComboBox *m_filterColumnCombo = nullptr;
+    QLineEdit *m_filterValueEdit = nullptr;
+    QPushButton *m_applyFilterBtn = nullptr;
+    QTableWidget *m_mainTable = nullptr;
+    QLabel *m_activeTableLabel = nullptr;
+    QLabel *m_classicFooter = nullptr;
+
+    // Modern UI Elements
     QLabel *m_titleLabel = nullptr;
     QPushButton *m_tablesBtn = nullptr;
     QPushButton *m_queriesBtn = nullptr;
     QPushButton *m_exportBtn = nullptr;
-    QPushButton *m_exitBtn = nullptr;
-    QPushButton *m_switchModeBtn = nullptr;
     QPushButton *m_helpBtn = nullptr;
-
-    // Classic UI
-    QMenuBar *m_menuBar = nullptr;
-    QListWidget *m_tableListWidget = nullptr;
-    QLabel *m_activeTableLabel = nullptr;
-    QLabel *m_classicFooter = nullptr;
+    QPushButton *m_switchModeBtn = nullptr;
+    QPushButton *m_exitBtn = nullptr;
 
     TablesWindow *m_tablesWindow = nullptr;
     QueriesWindow *m_queriesWindow = nullptr;

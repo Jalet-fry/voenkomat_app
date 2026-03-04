@@ -15,12 +15,6 @@
 #include <QSqlRecord>
 #include <QKeyEvent>
 #include <QMenuBar>
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-#include <QRegularExpression>
-#else
-#include <QRegExp>
-#endif
-#include <algorithm>
 
 QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     : QWidget(parent)
@@ -29,12 +23,20 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     ConfigManager config("config.ini");
     m_isClassicUI = config.isClassicUI();
 
-    setWindowTitle(m_isClassicUI ? "Запросы (CUA)" : "Управление запросами");
-    if (m_isClassicUI) setFixedSize(900, 600); else resize(1000, 750);
+    setWindowTitle(m_isClassicUI ? "Queries List (CUA)" : "Special Queries");
+
+    if (m_isClassicUI) {
+        setFixedSize(600, 400);
+    } else {
+        resize(800, 600);
+    }
 
     setupUI();
     setupStyles();
     loadQueries();
+
+    // ГАРАНТИРУЕМ ФОКУС
+    if (m_table) m_table->setFocus();
 }
 
 QueriesWindow::~QueriesWindow() {}
@@ -47,8 +49,8 @@ void QueriesWindow::setupUI()
     m_table = new QTableWidget(this);
     m_table->setColumnCount(m_isClassicUI ? 3 : 4);
     QStringList headers;
-    headers << "Номер" << "Лаб." << "Описание запроса";
-    if (!m_isClassicUI) headers << "Действие";
+    headers << "No." << "Lab" << "Description";
+    if (!m_isClassicUI) headers << "Run";
     m_table->setHorizontalHeaderLabels(headers);
 
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -60,52 +62,34 @@ void QueriesWindow::setupUI()
     m_layout->addWidget(m_table);
 
     if (m_isClassicUI) {
-        m_footerHint = new QLabel(" [Enter] Выполнить | [F3] Фильтр | [Esc] Назад ", this);
-        m_footerHint->setStyleSheet("background-color: #000080; color: white; font-family: 'Consolas'; font-size: 11px;");
+        m_footerHint = new QLabel(" [Enter] Run Query | [Esc] Close Window ", this);
+        m_footerHint->setStyleSheet("background-color: #000080; color: white; padding: 2px; font-family: 'Consolas'; font-size: 11px;");
         m_layout->addWidget(m_footerHint);
     }
 }
 
 void QueriesWindow::setupModernUI()
 {
-    m_layout->setContentsMargins(20, 20, 20, 20);
-    m_layout->setSpacing(15);
-
-    QLabel *title = new QLabel("Список всех SQL запросов", this);
-    title->setAlignment(Qt::AlignCenter);
-    title->setStyleSheet("font-size: 22px; font-weight: bold; color: #2c3e50;");
+    m_layout->setContentsMargins(15, 15, 15, 15);
+    QLabel *title = new QLabel("Select Special Query", this);
+    title->setStyleSheet("font-size: 18px; font-weight: bold;");
     m_layout->addWidget(title);
-
-    QHBoxLayout *filterL = new QHBoxLayout();
-    m_searchEdit = new QLineEdit(this);
-    m_searchEdit->setPlaceholderText("Поиск по описанию...");
-    connect(m_searchEdit, &QLineEdit::textChanged, this, &QueriesWindow::onFilterChanged);
-    filterL->addWidget(new QLabel("Поиск:"));
-    filterL->addWidget(m_searchEdit);
-    m_layout->addLayout(filterL);
 }
 
 void QueriesWindow::setupClassicUI()
 {
     m_layout->setContentsMargins(2, 2, 2, 2);
     m_layout->setSpacing(0);
-
-    m_menuBar = new QMenuBar(this);
-    QMenu *m = m_menuBar->addMenu("&Запрос");
-    m->addAction("Выполнить (Enter)", this, &QueriesWindow::runSelectedQuery);
-    m->addAction("Назад (Esc)", this, &QueriesWindow::goBack);
-
-    m_layout->setMenuBar(m_menuBar);
 }
 
 void QueriesWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) { goBack(); return; }
-    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { runSelectedQuery(); return; }
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        if (m_table->hasFocus()) { runSelectedQuery(); return; }
+    }
     QWidget::keyPressEvent(event);
 }
-
-void QueriesWindow::onFilterChanged() { refreshTable(); }
 
 void QueriesWindow::loadQueries()
 {
@@ -116,20 +100,15 @@ void QueriesWindow::loadQueries()
 void QueriesWindow::refreshTable()
 {
     m_table->setRowCount(0);
-    QString searchText = m_searchEdit ? m_searchEdit->text().toLower() : "";
-
     int row = 0;
     for (const auto &q : m_allQueries) {
-        if (!searchText.isEmpty() && !q.description.toLower().contains(searchText)) continue;
-
         m_table->insertRow(row);
         m_table->setItem(row, 0, new QTableWidgetItem(q.number));
         m_table->setItem(row, 1, new QTableWidgetItem(q.type));
         m_table->setItem(row, 2, new QTableWidgetItem(q.description));
 
         if (!m_isClassicUI) {
-            QPushButton *btn = new QPushButton("Выполнить", this);
-            btn->setStyleSheet("background-color: #44bd32; color: white;");
+            QPushButton *btn = new QPushButton("Run", this);
             connect(btn, &QPushButton::clicked, this, &QueriesWindow::runSelectedQuery);
             m_table->setCellWidget(row, 3, btn);
         }
@@ -139,7 +118,6 @@ void QueriesWindow::refreshTable()
         }
         row++;
     }
-    m_table->resizeColumnsToContents();
 }
 
 void QueriesWindow::runSelectedQuery()
@@ -189,9 +167,8 @@ void QueriesWindow::goBack() { hide(); }
 void QueriesWindow::setupStyles() {
     if (m_isClassicUI) {
         setStyleSheet("QWidget { background-color: #c0c0c0; color: black; }"
-                      "QTableWidget { background-color: white; color: black; border: 2px inset gray; font-family: 'Consolas'; }"
-                      "QHeaderView::section { background-color: #c0c0c0; color: black; border: 1px solid black; }");
-    } else {
-        setStyleSheet("QPushButton { background-color: #0097e6; color: white; border-radius: 4px; padding: 5px; }");
+                      "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; }");
     }
 }
+
+void QueriesWindow::onFilterChanged() {}

@@ -1,27 +1,18 @@
-# TODO: [REVIEW] OK.
-# TODO: [NOTE] Implementation uses JSON for values in BerkeleyDB (Key-Value Core API).
-# TODO: [FIX] Added automatic cleanup of old database files and advanced JSON encoding.
-
 import json
 import os
-import shutil
+import dbm  # Встроенная библиотека Python, аналог BerkeleyDB (Key-Value), работает без установки pip
 from datetime import datetime, date, time
 from decimal import Decimal
 
+# Импортируем менеджер базы данных из вашего проекта
 try:
-    from bsddb3 import db
+    from database import execute_query
 except ImportError:
-    try:
-        from berkeleydb import db
-    except ImportError:
-        print("Ошибка: Не установлена библиотека BerkeleyDB (bsddb3 или berkeleydb).")
-        print("Установите её командой: pip install bsddb3")
-        exit(1)
-
-from database import execute_query
+    print("Ошибка: Не найден файл database.py в текущей директории.")
+    exit(1)
 
 class NoSQLJSONEncoder(json.JSONEncoder):
-    """Кастомный JSON encoder для корректного переноса типов данных из PostgreSQL"""
+    """Кастомный энкодер для типов данных Postgres (ISO даты, Decimal в float)"""
     def default(self, obj):
         if isinstance(obj, (datetime, date, time)):
             return obj.isoformat()
@@ -32,32 +23,37 @@ class NoSQLJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 def convert():
-    print("--- Запуск конвертации PostgreSQL -> BerkeleyDB (NoSQL) ---")
+    print("--- ЛАБОРАТОРНАЯ РАБОТА №3: КОНВЕРТАЦИЯ В NoSQL ---")
     
     nosql_dir = "nosql_db"
-    
-    # 1. Очистка и создание папки
-    if os.path.exists(nosql_dir):
-        print(f"Очистка старых данных в {nosql_dir}...")
-        for file in os.listdir(nosql_dir):
-            if file.endswith(".db"):
-                os.remove(os.path.join(nosql_dir, file))
-    else:
+    if not os.path.exists(nosql_dir):
         os.makedirs(nosql_dir)
+        print(f"Создана директория: {nosql_dir}")
+    else:
+        # Очистка старых файлов (согласно ТЗ: приложение создает базу заново)
+        print(f"Очистка старых данных в {nosql_dir}...")
+        for f in os.listdir(nosql_dir):
+            try:
+                os.remove(os.path.join(nosql_dir, f))
+            except:
+                pass
 
-    # 2. Получаем список всех таблиц
-    tables_query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
-    tables_res = execute_query(tables_query)
+    # 1. Получаем список всех таблиц схемы public (согласно алгоритму ТЗ)
+    tables_res = execute_query("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    """)
     tables = [row['table_name'] for row in tables_res]
-    
+
     if not tables:
-        print("Таблиц в базе данных не найдено.")
+        print("Таблиц в базе данных PostgreSQL не найдено.")
         return
 
     for table_name in tables:
-        print(f"Обработка таблицы: {table_name}...")
+        print(f"\nОбработка таблицы: {table_name}...")
         
-        # 3. Находим первичный ключ для формирования ключа BerkeleyDB
+        # 2. Получаем первичные ключи для формирования ключа BerkeleyDB (dbm)
         pk_query = f"""
             SELECT kcu.column_name 
             FROM information_schema.table_constraints tc 
@@ -67,37 +63,49 @@ def convert():
         """
         pk_res = execute_query(pk_query)
         pk_cols = [row['column_name'] for row in pk_res]
-        
-        # 4. Получаем данные
+
+        # 3. Получаем данные таблицы
         data = execute_query(f"SELECT * FROM public.{table_name}")
         
-        # 5. Создаем базу BerkeleyDB (HASH-таблица)
+        # Путь к файлу NoSQL базы
         db_path = os.path.join(nosql_dir, f"{table_name}.db")
-        bdb = db.DB()
-        bdb.open(db_path, None, db.DB_HASH, db.DB_CREATE)
+        
+        # 4. Создаем базу BerkeleyDB (через dbm) и заполняем ее
+        try:
+            # 'n' - create new, 'c' - read/write (create if not exists)
+            # dbm на Windows создаст файлы .dat и .dir
+            with dbm.open(db_path, 'n') as db:
+                count = 0
+                for row in data:
+                    # ФОРМИРУЕМ КЛЮЧ (Key)
+                    if pk_cols:
+                        # Если ключ составной (M2M), соединяем через '_' как в ТЗ (напр. 1_5)
+                        key_str = "_".join([str(row[c]) for c in pk_cols])
+                    else:
+                        # Если ПК нет, используем значение первой колонки
+                        key_str = str(next(iter(row.values())))
 
-        count = 0
-        for row in data:
-            # Формируем КЛЮЧ (ID или составной)
-            if pk_cols:
-                key = "_".join([str(row[c]) for c in pk_cols])
-            else:
-                # Если ПК нет (не по схеме), используем первый столбец
-                key = str(next(iter(row.values())))
+                    # ФОРМИРУЕМ ЗНАЧЕНИЕ (Value в формате JSON)
+                    # Согласно ТЗ (таблица 2.1), в значении храним столбцы за вычетом PK (если PK одиночный)
+                    # Но для составных ключей в ТЗ пример показывает наличие полей в JSON.
+                    # Сделаем универсально: исключаем PK только если он один.
+                    if len(pk_cols) == 1:
+                        value_dict = {k: v for k, v in row.items() if k not in pk_cols}
+                    else:
+                        value_dict = row
 
-            # Формируем ЗНАЧЕНИЕ (JSON без полей первичного ключа)
-            # Мы используем кастомный энкодер для дат и чисел
-            value_dict = {k: v for k, v in row.items() if k not in pk_cols}
-            value_json = json.dumps(value_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
+                    value_json = json.dumps(value_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
 
-            # Записываем байты
-            bdb.put(key.encode('utf-8'), value_json.encode('utf-8'))
-            count += 1
+                    # Записываем в хранилище (dbm требует строки или байты)
+                    db[key_str] = value_json
+                    count += 1
+                
+                print(f"  Успешно: {count} записей перенесено в {table_name}.db")
+        except Exception as e:
+            print(f"  ОШИБКА при создании базы {table_name}: {e}")
 
-        bdb.close()
-        print(f"  Успешно: {count} записей перенесено в {db_path}")
-
-    print("\n--- Конвертация завершена! Данные сохранены в Key-Value формате. ---")
+    print("\n--- КОНВЕРТАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА ---")
+    print(f"Результаты сохранены в папке: {os.path.abspath(nosql_dir)}")
 
 if __name__ == "__main__":
     convert()

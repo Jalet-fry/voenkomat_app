@@ -1,8 +1,3 @@
-# TODO: [REVIEW] OK.
-# TODO: [SECURITY] Manual SQL escaping in escape_val() is risky. Consider using psycopg2 parameters.
-# TODO: [REQS] No check for LOOKUP_TABLES access rights in add_rec/update_rec/del_rec. 
-#       Superuser check (admin token) should be required for these tables.
-
 import os
 from fastapi import FastAPI, HTTPException, Query, Body, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,29 +18,17 @@ app.add_middleware(
 
 SUPERUSER_PASSWORD = "admin"
 
-TABLE_MAPPING = {
-    "conscripts": "conscripts",
-    "commissioners": "commissioners",
-    "medical_examinations": "medical_examinations",
-    "fitness_categories": "fitness_categories",
-    "military_id_cards": "military_id_cards",
-    "service_record_cards": "service_record_cards",
-    "callup_events": "callup_events"
-}
+# Справочники (Только для чтения для обычных пользователей)
+LOOKUP_TABLES = ["fitness_categories", "commissioners", "positions"]
 
-LOOKUP_TABLES = ["fitness_categories", "positions", "lesson_types", "groups", "subjects"]
+def check_superuser(token: str):
+    if token != SUPERUSER_PASSWORD:
+        raise HTTPException(status_code=403, detail="Доступ запрещен: требуются права администратора")
 
 def get_pk_column(table_name: str) -> str:
     query = f"SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{table_name}'"
     res = execute_query(query)
     return res[0]['column_name'] if res else "id"
-
-def get_real_table_name(table_name: str) -> str:
-    clean_name = table_name.replace("-", "_")
-    name = TABLE_MAPPING.get(clean_name, clean_name)
-    if not name.replace("_", "").isalnum():
-        raise HTTPException(status_code=400, detail="Invalid table name")
-    return name
 
 def escape_val(v: Any) -> str:
     if v is None or v == "": return "NULL"
@@ -65,7 +48,7 @@ def list_tables():
 
 @app.post("/api/restore")
 async def restore_database(payload: Dict[str, str] = Body(...), x_auth_token: Optional[str] = Header(None)):
-    if x_auth_token != SUPERUSER_PASSWORD: raise HTTPException(status_code=403, detail="Forbidden")
+    check_superuser(x_auth_token)
     sql = payload.get("sql", "")
     commands = [c.strip() for c in sql.split(';') if c.strip()]
     conn = get_db_connection()
@@ -79,23 +62,51 @@ async def restore_database(payload: Dict[str, str] = Body(...), x_auth_token: Op
         raise HTTPException(status_code=500, detail=str(e))
     finally: conn.close()
 
-@app.post("/api/create-table")
-async def create_table(payload: Dict[str, Any] = Body(...), x_auth_token: Optional[str] = Header(None)):
-    if x_auth_token != SUPERUSER_PASSWORD: raise HTTPException(status_code=403, detail="Forbidden")
-    name = payload.get("table_name")
-    cols = payload.get("columns", [])
-    pks = payload.get("primary_keys", [])
-    defs = [f"{c['name']} {c['type']}" for c in cols]
-    if pks: defs.append(f"PRIMARY KEY ({', '.join(pks)})")
+@app.get("/api/{table_name}")
+async def get_data(table_name: str, filters: Optional[str] = None):
+    query = f"SELECT * FROM public.{table_name}"
+    if filters: query += f" WHERE {filters}"
+    query += " ORDER BY 1 LIMIT 1000"
+    return {"data": execute_query(query)}
+
+@app.post("/api/{table_name}")
+async def add_rec(table_name: str, data: Dict[str, Any], x_auth_token: Optional[str] = Header(None)):
+    if table_name in LOOKUP_TABLES:
+        check_superuser(x_auth_token)
+    
+    cols = ", ".join(data.keys())
+    vals = ", ".join([escape_val(v) for v in data.values()])
+    query = f"INSERT INTO public.{table_name} ({cols}) VALUES ({vals}) RETURNING *"
     try:
-        execute_query(f"CREATE TABLE public.{name} ({', '.join(defs)})")
-        return {"status": "success"}
+        res = execute_query(query)
+        return {"status": "success", "data": res[0]}
     except Exception as e: raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/api/metadata/{table_name}")
-def get_metadata(table_name: str):
-    real = get_real_table_name(table_name)
-    return {"pk": get_pk_column(real), "is_lookup": real in LOOKUP_TABLES}
+@app.put("/api/{table_name}/{id}")
+async def update_rec(table_name: str, id: Any, data: Dict[str, Any], x_auth_token: Optional[str] = Header(None)):
+    if table_name in LOOKUP_TABLES:
+        check_superuser(x_auth_token)
+        
+    pk = get_pk_column(table_name)
+    sets = ", ".join([f"{k} = {escape_val(v)}" for k, v in data.items() if k != pk])
+    try:
+        res = execute_query(f"UPDATE public.{table_name} SET {sets} WHERE {pk} = {id} RETURNING *")
+        return {"status": "success", "data": res[0]}
+    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/{table_name}/{id}")
+async def del_rec(table_name: str, id: Any, x_auth_token: Optional[str] = Header(None)):
+    if table_name in LOOKUP_TABLES:
+        check_superuser(x_auth_token)
+        
+    pk = get_pk_column(table_name)
+    execute_query(f"DELETE FROM public.{table_name} WHERE {pk} = {id}")
+    return {"status": "success"}
+
+@app.get("/api/columns/{table_name}")
+def get_cols(table_name: str):
+    res = execute_query(f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}' ORDER BY ordinal_position")
+    return {"columns": [r['column_name'] for r in res]}
 
 @app.post("/api/execute-query")
 async def run_custom_query(payload: Dict[str, str] = Body(...)):
@@ -105,54 +116,6 @@ async def run_custom_query(payload: Dict[str, str] = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/api/{table_name}")
-async def get_data(table_name: str, filters: Optional[str] = None):
-    real = get_real_table_name(table_name)
-    query = f"SELECT * FROM public.{real}"
-    if filters: query += f" WHERE {filters}"
-    query += " ORDER BY 1 LIMIT 1000"
-    return {"data": execute_query(query)}
-
-@app.post("/api/{table_name}")
-async def add_rec(table_name: str, data: Dict[str, Any]):
-    real = get_real_table_name(table_name)
-    cols = ", ".join(data.keys())
-    vals = ", ".join([escape_val(v) for v in data.values()])
-    query = f"INSERT INTO public.{real} ({cols}) VALUES ({vals}) RETURNING *"
-    try:
-        res = execute_query(query)
-        return {"status": "success", "data": res[0]}
-    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
-
-@app.put("/api/{table_name}/{id}")
-async def update_rec(table_name: str, id: Any, data: Dict[str, Any]):
-    real = get_real_table_name(table_name)
-    pk = get_pk_column(real)
-    sets = ", ".join([f"{k} = {escape_val(v)}" for k, v in data.items() if k != pk])
-    try:
-        res = execute_query(f"UPDATE public.{real} SET {sets} WHERE {pk} = {id} RETURNING *")
-        return {"status": "success", "data": res[0]}
-    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
-
-@app.delete("/api/{table_name}/{id}")
-async def del_rec(table_name: str, id: Any):
-    real = get_real_table_name(table_name)
-    pk = get_pk_column(real)
-    execute_query(f"DELETE FROM public.{real} WHERE {pk} = {id}")
-    return {"status": "success"}
-
-@app.get("/api/columns/{table_name}")
-def get_cols(table_name: str):
-    real = get_real_table_name(table_name)
-    res = execute_query(f"SELECT column_name FROM information_schema.columns WHERE table_name = '{real}' ORDER BY ordinal_position")
-    return {"columns": [r['column_name'] for r in res]}
-
-@app.get("/api/column-details/{table_name}")
-def get_details(table_name: str):
-    real = get_real_table_name(table_name)
-    return {"details": execute_query(f"SELECT column_name as name, data_type as type, is_nullable = 'YES' as nullable, character_maximum_length as length FROM information_schema.columns WHERE table_name = '{real}'")}
-
 if __name__ == "__main__":
     import uvicorn
-    # Запускаем строго на localhost (127.0.0.1)
     uvicorn.run(app, host="127.0.0.1", port=8000)
