@@ -26,16 +26,15 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     setWindowTitle(m_isClassicUI ? "Queries List (CUA)" : "Special Queries");
 
     if (m_isClassicUI) {
-        setFixedSize(650, 450);
+        setFixedSize(700, 500);
     } else {
-        resize(800, 600);
+        resize(900, 650);
     }
 
     setupUI();
     setupStyles();
     loadQueries();
 
-    // ГАРАНТИРУЕМ ФОКУС
     if (m_table) m_table->setFocus();
 }
 
@@ -58,9 +57,7 @@ void QueriesWindow::setupUI()
     m_table->setAlternatingRowColors(true);
     m_table->horizontalHeader()->setStretchLastSection(true);
 
-    // itemActivated срабатывает и на DoubleClick, и на Enter
     connect(m_table, &QTableWidget::itemActivated, this, &QueriesWindow::runSelectedQuery);
-    // Для обратной совместимости
     connect(m_table, &QTableWidget::itemDoubleClicked, this, &QueriesWindow::runSelectedQuery);
 
     m_layout->addWidget(m_table);
@@ -75,8 +72,8 @@ void QueriesWindow::setupUI()
 void QueriesWindow::setupModernUI()
 {
     m_layout->setContentsMargins(15, 15, 15, 15);
-    QLabel *title = new QLabel("Select Special Query", this);
-    title->setStyleSheet("font-size: 18px; font-weight: bold;");
+    QLabel *title = new QLabel("Список специальных запросов", this);
+    title->setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;");
     m_layout->addWidget(title);
 }
 
@@ -89,8 +86,6 @@ void QueriesWindow::setupClassicUI()
 void QueriesWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) { goBack(); return; }
-    // QTableWidget перехватывает Enter сам по себе для активации,
-    // но на всякий случай оставим обработку здесь для окна
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         runSelectedQuery();
         return;
@@ -100,7 +95,60 @@ void QueriesWindow::keyPressEvent(QKeyEvent *event)
 
 void QueriesWindow::loadQueries()
 {
+    m_allQueries.clear();
+
+    // 1. Сначала загружаем "зашитые" базовые запросы
     m_allQueries = getEmbeddedQueries();
+
+    // 2. Пытаемся динамически загрузить все файлы из Lab5 и Lab6
+    QString basePath = "resources/queries/";
+    QStringList labs = {"Lab5", "Lab6"};
+
+    foreach (const QString &lab, labs) {
+        QDir dir(basePath + lab);
+        if (!dir.exists()) continue;
+
+        QStringList files = dir.entryList({"*.sql"}, QDir::Files, QDir::Name);
+        foreach (const QString &fileName, files) {
+            QFile file(dir.filePath(fileName));
+            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&file);
+                QString content = in.readAll();
+
+                // Проверяем, нет ли уже такого запроса (по номеру)
+                QString num = fileName.section('.', 0, 1); // "5.1", "6.12" и т.д.
+                bool exists = false;
+                for(const auto &existing : m_allQueries) {
+                    if(existing.number == num) { exists = true; break; }
+                }
+
+                if (!exists) {
+                    QueryInfo qi;
+                    qi.number = num;
+                    qi.type = lab;
+                    // Пытаемся вытащить описание из первой строки (комментария --)
+                    QString firstLine = content.section('\n', 0, 0).trimmed();
+                    if (firstLine.startsWith("--")) {
+                        qi.description = firstLine.mid(2).trimmed();
+                    } else {
+                        qi.description = "Запрос " + fileName;
+                    }
+                    qi.sqlText = content;
+                    m_allQueries.append(qi);
+                }
+                file.close();
+            }
+        }
+    }
+
+    // Сортируем по номеру для красоты
+    std::sort(m_allQueries.begin(), m_allQueries.end(), [](const QueryInfo &a, const QueryInfo &b) {
+        QStringList aParts = a.number.split('.');
+        QStringList bParts = b.number.split('.');
+        if (aParts[0] != bParts[0]) return aParts[0].toInt() < bParts[0].toInt();
+        return aParts[1].toInt() < bParts[1].toInt();
+    });
+
     refreshTable();
 }
 
@@ -115,7 +163,6 @@ void QueriesWindow::refreshTable()
         QTableWidgetItem *it1 = new QTableWidgetItem(q.type);
         QTableWidgetItem *it2 = new QTableWidgetItem(q.description);
 
-        // В классическом интерфейсе CUA все должно быть максимально контрастным
         it0->setForeground(QBrush(Qt::black));
         it1->setForeground(QBrush(Qt::black));
         it2->setForeground(QBrush(Qt::black));
@@ -155,9 +202,9 @@ void QueriesWindow::runSelectedQuery()
     if (m_dbManager->isHttpMode()) {
         bool ok;
         QJsonArray data = m_dbManager->executeCustomQueryHttp(target.sqlText, &ok);
-        if (data.isEmpty() && !ok) {
+        if (!ok) {
             QApplication::restoreOverrideCursor();
-            QMessageBox::critical(this, "Ошибка", "Запрос не вернул данных или произошла ошибка.");
+            QMessageBox::critical(this, "Ошибка", "Ошибка выполнения запроса на сервере.");
             return;
         }
         if (!data.isEmpty()) {
@@ -188,8 +235,8 @@ void QueriesWindow::runSelectedQuery()
     }
     QApplication::restoreOverrideCursor();
 
-    if (cols.isEmpty()) {
-        QMessageBox::information(this, "Результат", "Запрос выполнен успешно, но не вернул строк.");
+    if (cols.isEmpty() && rows.isEmpty()) {
+        QMessageBox::information(this, "Результат", "Запрос выполнен, но не вернул данных.");
         return;
     }
 
@@ -204,6 +251,10 @@ void QueriesWindow::setupStyles() {
         setStyleSheet("QWidget { background-color: #c0c0c0; color: black; }"
                       "QTableWidget { background-color: white; border: 2px inset gray; color: black; font-family: 'Consolas'; selection-background-color: #000080; selection-color: white; }"
                       "QHeaderView::section { background-color: #c0c0c0; color: black; border: 1px solid black; }");
+    } else {
+        setStyleSheet("QWidget { background-color: #f8f9fa; }"
+                      "QTableWidget { background-color: white; color: black; border: 1px solid #dee2e6; selection-background-color: #3498db; }"
+                      "QPushButton { background-color: #3498db; color: white; border-radius: 4px; padding: 5px; }");
     }
 }
 

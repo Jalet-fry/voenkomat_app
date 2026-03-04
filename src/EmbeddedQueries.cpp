@@ -7,63 +7,64 @@ QList<QueryInfo> getEmbeddedQueries()
 {
     QList<QueryInfo> queries;
     QueryInfo query;
-    using namespace Db;
 
-    // --- Lab 4 ---
-    query.number = "4.1";
-    query.description = "Общий список призывников";
-    query.type = "Lab4";
-    query.sqlText = QString("SELECT * FROM public.%1;").arg(Tables::CONSCRIPTS);
-    queries.append(query);
+    // --- ЛАБОРАТОРНАЯ №5 (Выборка и агрегация) ---
 
-    // --- Lab 5 ---
     query.number = "5.1";
-    query.description = "ФИО и возраст (убывание)";
+    query.description = "Призывники по возрасту (убывание)";
     query.type = "Lab5";
-    query.sqlText = QString("SELECT %1, %2, EXTRACT(YEAR FROM AGE(CURRENT_DATE, %2)) as age FROM public.%3 ORDER BY age DESC;")
-        .arg(Conscripts::FULL_NAME).arg(Conscripts::BIRTH_DATE).arg(Tables::CONSCRIPTS);
+    query.sqlText = "SELECT full_name, birth_date, EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date)) as age FROM public.conscripts ORDER BY age DESC;";
     queries.append(query);
 
     query.number = "5.4";
-    query.description = "Призывники и их военные билеты";
+    query.description = "Призывники с их военными билетами";
     query.type = "Lab5";
-    query.sqlText = QString("SELECT p.%1, vb.%2, vb.%3 FROM public.%4 p LEFT JOIN public.%5 vb ON vb.%6 = p.%7;")
-        .arg(Conscripts::FULL_NAME).arg(MilitaryIdCards::TICKET_NUMBER).arg(MilitaryIdCards::MILITARY_RANK)
-        .arg(Tables::CONSCRIPTS).arg(Tables::MILITARY_ID_CARDS).arg(MilitaryIdCards::CONSCRIPT_ID).arg(Conscripts::CONSCRIPT_ID);
+    query.sqlText = "SELECT p.full_name, vb.ticket_number, vb.military_rank FROM public.conscripts p LEFT JOIN public.military_id_cards vb ON vb.conscript_id = p.conscript_id;";
     queries.append(query);
 
     query.number = "5.7";
-    query.description = "Количество призывников у комиссаров";
+    query.description = "Количество призывников у каждого комиссара";
     query.type = "Lab5";
-    query.sqlText = QString("SELECT c.%1, COUNT(pc.%2) as count FROM public.%3 c LEFT JOIN public.%4 pc ON pc.%5 = c.%6 GROUP BY c.%6, c.%1 ORDER BY count DESC;")
-        .arg(Commissioners::FULL_NAME).arg(ConscriptsCommissioners::CONSCRIPT_ID).arg(Tables::COMMISSIONERS)
-        .arg(Tables::CONSCRIPTS_COMMISSIONERS).arg(ConscriptsCommissioners::COMMISSIONER_ID).arg(Commissioners::COMMISSIONER_ID);
+    query.sqlText = "SELECT c.full_name, COUNT(pc.conscript_id) AS count FROM public.commissioners c LEFT JOIN public.conscripts_commissioners pc ON pc.commissioner_id = c.commissioner_id GROUP BY c.commissioner_id, c.full_name ORDER BY count DESC;";
     queries.append(query);
 
-    // --- Lab 6 ---
+    query.number = "5.10";
+    query.description = "Комиссары и количество их призывников";
+    query.type = "Lab5";
+    query.sqlText = "SELECT c.full_name, c.position, COUNT(pc.conscript_id) AS prizivniki_count FROM public.commissioners c LEFT JOIN public.conscripts_commissioners pc ON pc.commissioner_id = c.commissioner_id GROUP BY c.commissioner_id, c.full_name, c.position ORDER BY prizivniki_count DESC;";
+    queries.append(query);
+
+    // --- ЛАБОРАТОРНАЯ №6 (Сложные соединения и подзапросы) ---
+
     query.number = "6.1";
-    query.description = "Категории годности и возраст";
+    query.description = "Призывники, категории годности и возраст";
     query.type = "Lab6";
-    query.sqlText = QString("SELECT p.%1, kg.%2, EXTRACT(YEAR FROM AGE(CURRENT_DATE, p.%3)) as age FROM public.%4 p JOIN public.%5 vb ON vb.%6 = p.%7 JOIN public.%8 kg ON kg.%9 = vb.%10;")
-        .arg(Conscripts::FULL_NAME).arg(FitnessCategories::CATEGORY_NAME).arg(Conscripts::BIRTH_DATE)
-        .arg(Tables::CONSCRIPTS).arg(Tables::MILITARY_ID_CARDS).arg(MilitaryIdCards::CONSCRIPT_ID).arg(Conscripts::CONSCRIPT_ID)
-        .arg(Tables::FITNESS_CATEGORIES).arg(FitnessCategories::CATEGORY_ID).arg(MilitaryIdCards::CATEGORY_ID);
+    query.sqlText = "SELECT p.full_name, kg.category_name AS kategoria_godnosti, EXTRACT(YEAR FROM AGE(CURRENT_DATE, p.birth_date)) AS age FROM public.conscripts p JOIN public.military_id_cards vb ON vb.conscript_id = p.conscript_id JOIN public.fitness_categories kg ON kg.category_id = vb.category_id ORDER BY age DESC, p.full_name;";
+    queries.append(query);
+
+    query.number = "6.2";
+    query.description = "Города с ровно одним призывником";
+    query.type = "Lab6";
+    query.sqlText = "SELECT TRIM(REPLACE(REPLACE(SPLIT_PART(p.residence_address, ',', 1), 'г.', ''), 'г ', '')) AS city, COUNT(p.conscript_id) AS conscripts_count FROM public.conscripts p WHERE p.residence_address IS NOT NULL GROUP BY 1 HAVING COUNT(p.conscript_id) = 1 ORDER BY conscripts_count DESC;";
     queries.append(query);
 
     query.number = "6.3";
-    query.description = "Количество медосмотров призывника";
+    query.description = "Количество медосмотров на каждого призывника";
     query.type = "Lab6";
-    query.sqlText = QString("SELECT p.%1, (SELECT COUNT(*) FROM public.%2 mo WHERE mo.%3 = p.%4) as med_count FROM public.%5 p;")
-        .arg(Conscripts::FULL_NAME).arg(Tables::MEDICAL_EXAMINATIONS).arg(MedicalExaminations::CONSCRIPT_ID).arg(Conscripts::CONSCRIPT_ID).arg(Tables::CONSCRIPTS);
+    query.sqlText = "SELECT p.full_name, (SELECT COUNT(*) FROM public.medical_examinations mo WHERE mo.conscript_id = p.conscript_id) AS examinations_count FROM public.conscripts p ORDER BY examinations_count DESC;";
     queries.append(query);
 
     query.number = "6.19";
-    query.description = "История медосмотров (Дата/ФИО/Категория)";
+    query.description = "История медосмотров с ФИО и категориями";
     query.type = "Lab6";
-    query.sqlText = QString("SELECT mo.%1, p.%2, kg.%3 FROM public.%4 mo JOIN public.%5 p ON p.%6 = mo.%7 JOIN public.%8 kg ON kg.%9 = mo.%10 ORDER BY mo.%1 DESC;")
-        .arg(MedicalExaminations::EXAMINATION_DATE).arg(Conscripts::FULL_NAME).arg(FitnessCategories::CATEGORY_NAME)
-        .arg(Tables::MEDICAL_EXAMINATIONS).arg(Tables::CONSCRIPTS).arg(Conscripts::CONSCRIPT_ID).arg(MedicalExaminations::CONSCRIPT_ID)
-        .arg(Tables::FITNESS_CATEGORIES).arg(FitnessCategories::CATEGORY_ID).arg(MedicalExaminations::CATEGORY_ID);
+    query.sqlText = "SELECT mo.examination_date, mo.doctor_full_name, p.full_name AS conscript_name, kg.category_name FROM public.medical_examinations mo LEFT JOIN public.conscripts p ON p.conscript_id = mo.conscript_id LEFT JOIN public.fitness_categories kg ON kg.category_id = mo.category_id ORDER BY mo.examination_date DESC;";
+    queries.append(query);
+
+    // Операции над множествами
+    query.number = "6.31";
+    query.description = "Все ФИО в системе (UNION)";
+    query.type = "Lab6";
+    query.sqlText = "SELECT full_name FROM public.conscripts UNION SELECT full_name FROM public.commissioners ORDER BY full_name;";
     queries.append(query);
 
     return queries;
