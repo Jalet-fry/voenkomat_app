@@ -49,6 +49,7 @@ private:
     DatabaseManager *m_dbManager;
     QString m_tableName;
     bool m_isClassicUI;
+    bool m_canEdit; // Флаг прав на редактирование
 
     QVBoxLayout *m_layout;
     QTableWidget *m_table;

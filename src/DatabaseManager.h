@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QEventLoop>
+#include <QSqlRecord>
 
 class DatabaseManager : public QObject
 {
@@ -46,7 +47,10 @@ public:
     QJsonArray executeCustomQueryHttp(const QString &sql, bool *ok = nullptr);
 
     QJsonArray fetchTableDataHttp(const QString &tableName, const QString &filters = "");
-    bool addRecordHttp(const QString &tableName, const QJsonObject &data);
+
+    // Возвращает объект созданной записи или пустой объект при ошибке
+    QJsonObject addRecordHttp(const QString &tableName, const QJsonObject &data);
+
     bool updateRecordHttp(const QString &tableName, int recordId, const QJsonObject &data);
     bool deleteRecordHttp(const QString &tableName, int recordId);
     bool createBackupHttp();
@@ -74,8 +78,6 @@ public:
         QString columnName;
         QString referencedTable;
         QString referencedColumn;
-        QString updateRule;
-        QString deleteRule;
     };
 
     struct SequenceInfo {
@@ -83,7 +85,7 @@ public:
         long long currentValue;
         long long increment;
     };
-    
+
     QStringList getPrimaryKeys(const QString &tableName);
     QString getPrimaryKeyColumn(const QString &tableName);
     QList<ColumnDetail> getColumnDetails(const QString &tableName);
@@ -92,14 +94,8 @@ public:
 
     QList<QPair<QString, QString>> getColumnInfo(const QString &tableName);
     QString getColumnDefinition(const QString &tableName, const QString &columnName);
-    QStringList getUniqueConstraints(const QString &tableName);
-    QStringList getIndexes(const QString &tableName);
-    QStringList getSequences(const QString &tableName);
-    QList<SequenceInfo> getSequenceInfo(const QString &tableName);
 
-    // Исправлено: используем явный QList<QString> для соответствия вызову
     bool createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QList<QString> &primaryKeys);
-
     bool dropTable(const QString &tableName, bool cascade = false);
     bool addColumn(const QString &tableName, const QString &columnName, const QString &dataType, bool isNullable = true, const QVariant &defaultValue = QVariant());
     bool dropColumn(const QString &tableName, const QString &columnName);
@@ -107,8 +103,6 @@ public:
 
     QByteArray sendHttpRequest(const QString &method, const QString &url, const QByteArray &data = QByteArray());
     static QString escapeIdentifier(const QString &identifier);
-    QSqlQuery prepareQuery(const QString &query);
-    bool executePreparedQuery(QSqlQuery &query);
 
 private:
     QSqlDatabase m_db;

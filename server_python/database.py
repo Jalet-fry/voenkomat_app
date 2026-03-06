@@ -2,7 +2,6 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
 import configparser
-import re
 from fastapi import HTTPException
 
 def get_db_config():
@@ -19,8 +18,6 @@ def get_db_config():
                 for k, v in raw_config.items():
                     if k != "password": db_params[k] = v
         except: pass
-    env_password = os.getenv("PGPASSWORD")
-    if env_password: db_params["password"] = env_password
     return db_params
 
 def get_db_connection():
@@ -40,10 +37,14 @@ def execute_query(query, params=None):
         
         cursor.execute(query, params)
 
-        # Если запрос возвращает данные (SELECT, RETURNING и т.д.)
+        result = None
         if cursor.description:
+            # Если есть результат (SELECT или INSERT...RETURNING)
             result = cursor.fetchall()
+            # ВАЖНО: всегда коммитим, так как это может быть INSERT/UPDATE с RETURNING
+            conn.commit()
         else:
+            # Если это обычный UPDATE/DELETE без возврата данных
             conn.commit()
             result = [{"rows_affected": cursor.rowcount}]
             

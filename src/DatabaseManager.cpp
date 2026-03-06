@@ -22,7 +22,11 @@ bool DatabaseManager::connectToDatabase(const QString &host, const QString &port
         QString targetHost = (host == "localhost" || host.isEmpty()) ? "127.0.0.1" : host;
         m_serverUrl = QString("http://%1:%2").arg(targetHost).arg(port == "5432" ? "8000" : port);
         QByteArray response = sendHttpRequest("GET", m_serverUrl + "/");
-        return !response.isEmpty();
+        if (response.isEmpty()) {
+            m_lastError = "Сервер API не отвечает по адресу " + m_serverUrl;
+            return false;
+        }
+        return true;
     }
 
     if (QSqlDatabase::contains("military_connection")) {
@@ -46,7 +50,11 @@ void DatabaseManager::disconnect() { if (m_db.isOpen()) m_db.close(); }
 
 QSqlQuery DatabaseManager::executeQuery(const QString &query, bool *ok)
 {
-    if (m_httpMode) { if (ok) *ok = false; return QSqlQuery(m_db); }
+    if (m_httpMode) {
+        if (ok) *ok = false;
+        m_lastError = "Прямые SQL-запросы запрещены в режиме HTTP. Используйте executeCustomQueryHttp.";
+        return QSqlQuery(m_db);
+    }
     QSqlQuery sqlQuery(m_db);
     if (!sqlQuery.exec(query)) { m_lastError = sqlQuery.lastError().text(); if (ok) *ok = false; }
     else { if (ok) *ok = true; }
@@ -70,10 +78,12 @@ QJsonArray DatabaseManager::fetchTableDataHttp(const QString &tableName, const Q
     return QJsonDocument::fromJson(response).object()["data"].toArray();
 }
 
-bool DatabaseManager::addRecordHttp(const QString &tableName, const QJsonObject &data)
+QJsonObject DatabaseManager::addRecordHttp(const QString &tableName, const QJsonObject &data)
 {
     QByteArray response = sendHttpRequest("POST", m_serverUrl + "/api/" + tableName, QJsonDocument(data).toJson());
-    return !response.isEmpty();
+    if (response.isEmpty()) return QJsonObject();
+    QJsonObject obj = QJsonDocument::fromJson(response).object();
+    return obj["data"].toObject();
 }
 
 bool DatabaseManager::updateRecordHttp(const QString &tableName, int recordId, const QJsonObject &data)
@@ -94,7 +104,6 @@ bool DatabaseManager::createBackupHttp()
     return !response.isEmpty();
 }
 
-// РЕАЛИЗАЦИЯ createTable (была пропущена в предыдущем обновлении)
 bool DatabaseManager::createTable(const QString &tableName, const QList<QPair<QString, QString>> &columns, const QList<QString> &primaryKeys)
 {
     if (m_httpMode) {
@@ -227,8 +236,6 @@ QList<DatabaseManager::ColumnDetail> DatabaseManager::getColumnDetails(const QSt
     return details;
 }
 
-QSqlQuery DatabaseManager::prepareQuery(const QString &query) { QSqlQuery q(m_db); q.prepare(query); return q; }
-bool DatabaseManager::executePreparedQuery(QSqlQuery &query) { return query.exec(); }
 QString DatabaseManager::lastError() const { return m_lastError; }
 QSqlDatabase DatabaseManager::database() const { return m_db; }
 bool DatabaseManager::beginTransaction() { return m_httpMode ? true : m_db.transaction(); }
@@ -239,12 +246,24 @@ QStringList DatabaseManager::getPrimaryKeys(const QString &t) { return QStringLi
 
 QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const QString &t) {
     QList<ForeignKeyInfo> res;
-    if(m_httpMode) return res;
+    if(m_httpMode) {
+        QByteArray resp = sendHttpRequest("GET", m_serverUrl + "/api/foreign-keys/" + t);
+        QJsonArray arr = QJsonDocument::fromJson(resp).object()["foreign_keys"].toArray();
+        for(int i=0; i<arr.size(); ++i) {
+            QJsonObject obj = arr[i].toObject();
+            ForeignKeyInfo fi;
+            fi.columnName = obj["column"].toString();
+            fi.referencedTable = obj["referenced_table"].toString();
+            fi.referencedColumn = obj["referenced_column"].toString();
+            res << fi;
+        }
+        return res;
+    }
     QSqlQuery q(m_db);
     q.prepare("SELECT tc.constraint_name, kcu.column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = :t");
     q.bindValue(":t", t);
     if(q.exec()) while(q.next()) {
-        ForeignKeyInfo fi; fi.constraintName = q.value(0).toString(); fi.columnName = q.value(1).toString();
+        ForeignKeyInfo fi; fi.columnName = q.value(1).toString();
         fi.referencedTable = q.value(2).toString(); fi.referencedColumn = q.value(3).toString();
         res << fi;
     }
@@ -253,7 +272,7 @@ QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const 
 
 QStringList DatabaseManager::getForeignKeys(const QString &t) {
     QStringList res;
-    foreach(const auto &fi, getForeignKeyInfo(t)) res << fi.constraintName;
+    foreach(const auto &fi, getForeignKeyInfo(t)) res << fi.columnName;
     return res;
 }
 
@@ -267,11 +286,6 @@ QString DatabaseManager::getColumnDefinition(const QString &t, const QString &c)
     foreach(const auto &d, getColumnDetails(t)) if(d.columnName == c) return d.dataType;
     return "";
 }
-
-QStringList DatabaseManager::getUniqueConstraints(const QString &) { return QStringList(); }
-QStringList DatabaseManager::getIndexes(const QString &) { return QStringList(); }
-QStringList DatabaseManager::getSequences(const QString &) { return QStringList(); }
-QList<DatabaseManager::SequenceInfo> DatabaseManager::getSequenceInfo(const QString &) { return QList<SequenceInfo>(); }
 
 bool DatabaseManager::dropTable(const QString &t, bool cascade) {
     QString sql = QString("DROP TABLE IF EXISTS public.%1 %2").arg(t).arg(cascade ? "CASCADE" : "");

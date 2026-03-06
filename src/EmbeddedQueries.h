@@ -4,9 +4,14 @@
 #include <QList>
 #include <QString>
 
-struct QueryInfo;
+struct QueryInfo {
+    QString number;
+    QString description;
+    QString type;
+    QString sqlText;
+};
 
-// Р¤СѓРЅРєС†РёСЏ РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РІСЃРµС… РІСЃС‚СЂРѕРµРЅРЅС‹С… Р·Р°РїСЂРѕСЃРѕРІ
+// Функция для получения всех встроенных запросов
 QList<QueryInfo> getEmbeddedQueries();
 
 #endif // EMBEDDEDQUERIES_H

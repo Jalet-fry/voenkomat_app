@@ -12,13 +12,7 @@
 #include <QList>
 #include <QMenuBar>
 #include "DatabaseManager.h"
-
-struct QueryInfo {
-    QString number;
-    QString description;
-    QString type;
-    QString sqlText;
-};
+#include "EmbeddedQueries.h" // Подключаем здесь, чтобы QueryInfo был доступен
 
 class QueriesWindow : public QWidget
 {

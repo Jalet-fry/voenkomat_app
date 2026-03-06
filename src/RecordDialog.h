@@ -3,11 +3,13 @@
 
 #include <QDialog>
 #include <QLineEdit>
+#include <QComboBox>
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
 #include <QMap>
 #include <QDialogButtonBox>
+#include <QCompleter>
 #include "DatabaseManager.h"
 
 class RecordDialog : public QDialog
@@ -26,10 +28,10 @@ private slots:
 
 private:
     void setupUI();
-    void setupModernUI();
-    void setupClassicUI();
     void setupStyles();
     void loadRecordData();
+    void setupAutocomplete();
+    void setupForeignKeyFields();
     QString getDisplayName(const QString &fieldName) const;
 
     DatabaseManager *m_dbManager;
@@ -38,9 +40,8 @@ private:
     bool m_isClassicUI;
 
     QStringList m_columns;
-    QMap<QString, QLineEdit*> m_fields;
+    QMap<QString, QWidget*> m_fieldWidgets; // QLineEdit или QComboBox
     QMap<QString, QString> m_fieldDisplayNames;
-    QList<DatabaseManager::ForeignKeyInfo> m_foreignKeys;
 
     QVBoxLayout *m_layout;
     QDialogButtonBox *m_buttonBox;
