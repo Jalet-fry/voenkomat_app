@@ -1,44 +1,35 @@
 import json
 import os
-import dbm  # Встроенная библиотека Python, аналог BerkeleyDB (Key-Value), работает без установки pip
+import dbm
 from datetime import datetime, date, time
 from decimal import Decimal
 
-# Импортируем менеджер базы данных из вашего проекта
+# TODO: [LAB3] Реализация NoSQL конвертера (Postgres -> BerkeleyDB/dbm)
+# Соответствует требованиям спецификации: Ключ=PK, Значение=JSON.
+
 try:
     from database import execute_query
 except ImportError:
-    print("Ошибка: Не найден файл database.py в текущей директории.")
+    print("Ошибка: Не найден файл database.py")
     exit(1)
 
 class NoSQLJSONEncoder(json.JSONEncoder):
-    """Кастомный энкодер для типов данных Postgres (ISO даты, Decimal в float)"""
     def default(self, obj):
         if isinstance(obj, (datetime, date, time)):
             return obj.isoformat()
         elif isinstance(obj, Decimal):
             return float(obj)
-        elif isinstance(obj, bytes):
-            return obj.decode('utf-8', errors='ignore')
         return super().default(obj)
 
 def convert():
     print("--- ЛАБОРАТОРНАЯ РАБОТА №3: КОНВЕРТАЦИЯ В NoSQL ---")
     
+    # [ШАГ 1] Подключение к БД осуществляется внутри execute_query
     nosql_dir = "nosql_db"
     if not os.path.exists(nosql_dir):
         os.makedirs(nosql_dir)
-        print(f"Создана директория: {nosql_dir}")
-    else:
-        # Очистка старых файлов (согласно ТЗ: приложение создает базу заново)
-        print(f"Очистка старых данных в {nosql_dir}...")
-        for f in os.listdir(nosql_dir):
-            try:
-                os.remove(os.path.join(nosql_dir, f))
-            except:
-                pass
 
-    # 1. Получаем список всех таблиц схемы public (согласно алгоритму ТЗ)
+    # [ШАГ 2] Получение информации о таблицах (названия, столбцы, данные)
     tables_res = execute_query("""
         SELECT table_name 
         FROM information_schema.tables 
@@ -46,14 +37,10 @@ def convert():
     """)
     tables = [row['table_name'] for row in tables_res]
 
-    if not tables:
-        print("Таблиц в базе данных PostgreSQL не найдено.")
-        return
-
     for table_name in tables:
-        print(f"\nОбработка таблицы: {table_name}...")
+        print(f"Конвертация {table_name}...")
         
-        # 2. Получаем первичные ключи для формирования ключа BerkeleyDB (dbm)
+        # Получаем структуру PK для формирования ключа
         pk_query = f"""
             SELECT kcu.column_name 
             FROM information_schema.table_constraints tc 
@@ -61,51 +48,41 @@ def convert():
             WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{table_name}'
             ORDER BY kcu.ordinal_position
         """
-        pk_res = execute_query(pk_query)
-        pk_cols = [row['column_name'] for row in pk_res]
+        pk_cols = [row['column_name'] for row in pk_res] if (pk_res := execute_query(pk_query)) else []
 
-        # 3. Получаем данные таблицы
+        # Получаем содержимое таблицы
         data = execute_query(f"SELECT * FROM public.{table_name}")
-        
-        # Путь к файлу NoSQL базы
         db_path = os.path.join(nosql_dir, f"{table_name}.db")
         
-        # 4. Создаем базу BerkeleyDB (через dbm) и заполняем ее
+        # [ШАГ 3] Создание баз данных BerkeleyDB (dbm) и их заполнение
         try:
-            # 'n' - create new, 'c' - read/write (create if not exists)
-            # dbm на Windows создаст файлы .dat и .dir
             with dbm.open(db_path, 'n') as db:
-                count = 0
                 for row in data:
-                    # ФОРМИРУЕМ КЛЮЧ (Key)
-                    if pk_cols:
-                        # Если ключ составной (M2M), соединяем через '_' как в ТЗ (напр. 1_5)
+                    # ФОРМИРОВАНИЕ КЛЮЧА (согласно Таблице 2.1 ТЗ)
+                    if len(pk_cols) > 1:
+                        # Для связей M2M ключ вида {id1}_{id2}
                         key_str = "_".join([str(row[c]) for c in pk_cols])
+                    elif len(pk_cols) == 1:
+                        # Для обычных таблиц ключ - это ID
+                        key_str = str(row[pk_cols[0]])
                     else:
-                        # Если ПК нет, используем значение первой колонки
-                        key_str = str(next(iter(row.values())))
+                        key_str = str(list(row.values())[0])
 
-                    # ФОРМИРУЕМ ЗНАЧЕНИЕ (Value в формате JSON)
-                    # Согласно ТЗ (таблица 2.1), в значении храним столбцы за вычетом PK (если PK одиночный)
-                    # Но для составных ключей в ТЗ пример показывает наличие полей в JSON.
-                    # Сделаем универсально: исключаем PK только если он один.
+                    # ФОРМИРОВАНИЕ ЗНАЧЕНИЯ (JSON)
+                    # Если PK один, исключаем его из JSON (как в примере students: id -> {...})
                     if len(pk_cols) == 1:
-                        value_dict = {k: v for k, v in row.items() if k not in pk_cols}
+                        val_dict = {k: v for k, v in row.items() if k not in pk_cols}
                     else:
-                        value_dict = row
+                        val_dict = row
 
-                    value_json = json.dumps(value_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
-
-                    # Записываем в хранилище (dbm требует строки или байты)
-                    db[key_str] = value_json
-                    count += 1
+                    db[key_str] = json.dumps(val_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
                 
-                print(f"  Успешно: {count} записей перенесено в {table_name}.db")
+                print(f"  OK: {table_name}.db создана.")
         except Exception as e:
-            print(f"  ОШИБКА при создании базы {table_name}: {e}")
+            print(f"  Ошибка: {e}")
 
-    print("\n--- КОНВЕРТАЦИЯ ПОЛНОСТЬЮ ЗАВЕРШЕНА ---")
-    print(f"Результаты сохранены в папке: {os.path.abspath(nosql_dir)}")
+    # [ШАГ 4] Закрытие соединений происходит автоматически при выходе из with и функций
+    print("\n--- КОНВЕРТАЦИЯ ЗАВЕРШЕНА (TODO: [LAB3] OK) ---")
 
 if __name__ == "__main__":
     convert()

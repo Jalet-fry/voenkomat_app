@@ -14,6 +14,9 @@
 #include <QApplication>
 #include <QSqlRecord>
 #include <QKeyEvent>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonDocument>
 
 QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     : QWidget(parent)
@@ -81,11 +84,9 @@ void QueriesWindow::loadQueries()
 {
     m_allQueries.clear();
 
-    // 1. Поиск папки ресурсов (более агрессивный)
     QDir dirSearch(qApp->applicationDirPath());
     QString foundPath = "";
 
-    // Ищем в текущей, на один, на два и на три уровня вверх (для разных типов сборок)
     for(int i=0; i<4; ++i) {
         QString check = dirSearch.absoluteFilePath("resources/queries");
         if (QDir(check).exists()) {
@@ -122,7 +123,6 @@ void QueriesWindow::loadQueries()
         }
     }
 
-    // 2. Добавляем встроенные, если таких еще нет в списке
     QList<QueryInfo> embedded = getEmbeddedQueries();
     foreach(const auto &eq, embedded) {
         bool exists = false;
@@ -130,12 +130,23 @@ void QueriesWindow::loadQueries()
         if (!exists) m_allQueries.append(eq);
     }
 
-    // Сортировка по номерам
     std::sort(m_allQueries.begin(), m_allQueries.end(), [](const QueryInfo &a, const QueryInfo &b) {
         QStringList ap = a.number.split('.');
         QStringList bp = b.number.split('.');
-        if (ap[0] != bp[0]) return ap[0].toInt() < bp[0].toInt();
-        if (ap.size() > 1 && bp.size() > 1) return ap[1].toInt() < bp[1].toInt();
+        if (ap[0] != bp[0]) {
+            bool okA, okB;
+            int vA = ap[0].toInt(&okA);
+            int vB = bp[0].toInt(&okB);
+            if(okA && okB) return vA < vB;
+            return ap[0] < bp[0];
+        }
+        if (ap.size() > 1 && bp.size() > 1) {
+            bool okA, okB;
+            int vA = ap[1].toInt(&okA);
+            int vB = bp[1].toInt(&okB);
+            if(okA && okB) return vA < vB;
+            return ap[1] < bp[1];
+        }
         return ap.size() < bp.size();
     });
 
@@ -178,9 +189,6 @@ void QueriesWindow::runSelectedQuery()
                     foreach (const QString &col, cols) row << obj[col].toVariant();
                     rows << row;
                 }
-            } else {
-                // Если данные пустые, попробуем хотя бы показать пустую таблицу
-                // (колонки в этом режиме без данных не получить без доп. запроса метаданных)
             }
         }
     } else {
@@ -201,12 +209,15 @@ void QueriesWindow::runSelectedQuery()
         return;
     }
 
-    // ВСЕГДА открываем окно, чтобы пользователь видел результат (даже пустой)
     QueryResultWindow *res = new QueryResultWindow(target.number + ": " + target.description, cols, rows, m_dbManager, this);
     res->show();
 }
 
 void QueriesWindow::goBack() { hide(); }
+
+void QueriesWindow::onFilterChanged() {
+    // Заглушка для соответствия QueriesWindow.h
+}
 
 void QueriesWindow::setupStyles() {
     if (m_isClassicUI) {
@@ -219,5 +230,3 @@ void QueriesWindow::setupStyles() {
                       "QPushButton { background-color: #3498db; color: white; border-radius: 4px; padding: 8px; font-weight: bold; }");
     }
 }
-
-void QueriesWindow::onFilterChanged() {}

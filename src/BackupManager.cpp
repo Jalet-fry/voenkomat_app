@@ -1,5 +1,5 @@
 // TODO: [REVIEW] OK.
-// TODO: [FIX] exportAllTablesToXlsx and other methods are currently stubs (return false/empty).
+// TODO: [FIX] exportAllTablesToXlsx and other methods are currently stubs (return false/empty). - FIXED
 // TODO: [FIX] generateSQLBackup uses "DELETE FROM" - verify if this is the intended restore behavior (destructive).
 
 #include "BackupManager.h"
@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QSqlRecord>
 #include "xlsxdocument.h"
 #include "xlsxformat.h"
 using namespace QXlsx;
@@ -33,6 +34,20 @@ QString BackupManager::getBackupsExportPath(const QString &format) const
     return path;
 }
 
+QString BackupManager::getTablesExportPath(const QString &format) const
+{
+    QString path = QDir(getExportsDirectory()).absoluteFilePath(QString("tables/%1").arg(format.toLower()));
+    QDir(path).mkpath(".");
+    return path;
+}
+
+QString BackupManager::getQueriesExportPath(const QString &format) const
+{
+    QString path = QDir(getExportsDirectory()).absoluteFilePath(QString("queries/%1").arg(format.toLower()));
+    QDir(path).mkpath(".");
+    return path;
+}
+
 BackupManager::BackupManager(DatabaseManager *dbManager) : m_dbManager(dbManager) {}
 
 bool BackupManager::exportAllTables()
@@ -43,7 +58,10 @@ bool BackupManager::exportAllTables()
     QString sqlPath = QDir(getBackupsExportPath("sql")).absoluteFilePath(QString("backup_%1.sql").arg(timestamp));
 
     QFile file(sqlPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        m_lastError = "Не удалось открыть файл для записи";
+        return false;
+    }
     QTextStream out(&file);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     out.setCodec("UTF-8");
@@ -67,7 +85,7 @@ QString BackupManager::generateSQLBackup(const QString &tableName)
     if (m_dbManager->isHttpMode()) {
         data = m_dbManager->fetchTableDataHttp(tableName);
     } else {
-        QSqlQuery query = m_dbManager->executeQuery(QString("SELECT * FROM %1").arg(tableName));
+        QSqlQuery query = m_dbManager->executeQuery(QString("SELECT * FROM public.%1").arg(tableName));
         while (query.next()) {
             QJsonObject obj;
             for(int i=0; i<cols.size(); ++i) obj[cols[i]] = QJsonValue::fromVariant(query.value(i));
@@ -83,11 +101,73 @@ QString BackupManager::generateSQLBackup(const QString &tableName)
         foreach (const QString &col, cols) {
             QVariant v = obj[col].toVariant();
             if (v.isNull() || v.toString().isEmpty()) vals << "NULL";
-            else vals << QString("'%1'").arg(v.toString().replace("'", "''"));
+            else {
+                QString s = v.toString().replace("'", "''");
+                vals << QString("'%1'").arg(s);
+            }
         }
         res += QString("INSERT INTO public.%1 (%2) VALUES (%3);\n").arg(tableName).arg(cols.join(",")).arg(vals.join(","));
     }
     return res;
+}
+
+bool BackupManager::exportAllTablesToXlsx()
+{
+    if (!m_dbManager || !m_dbManager->isConnected()) return false;
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString filePath = QDir(getBackupsExportPath("xlsx")).absoluteFilePath(QString("full_backup_%1.xlsx").arg(timestamp));
+
+    Document xlsx;
+    QStringList tables = m_dbManager->getTableList();
+    bool first = true;
+
+    foreach (const QString &t, tables) {
+        if (!first) xlsx.addSheet(t);
+        else { xlsx.renameSheet("Sheet1", t); first = false; }
+
+        QStringList cols = m_dbManager->getColumnList(t);
+        for(int c=0; c<cols.size(); ++c) xlsx.write(1, c+1, cols[c]);
+
+        QJsonArray data = m_dbManager->isHttpMode() ? m_dbManager->fetchTableDataHttp(t) : QJsonArray();
+        if (!m_dbManager->isHttpMode()) {
+            QSqlQuery q = m_dbManager->executeQuery("SELECT * FROM public." + t);
+            while(q.next()) {
+                QJsonObject row;
+                for(int i=0; i<cols.size(); ++i) row[cols[i]] = QJsonValue::fromVariant(q.value(i));
+                data.append(row);
+            }
+        }
+
+        for(int i=0; i<data.size(); ++i) {
+            QJsonObject row = data[i].toObject();
+            for(int j=0; j<cols.size(); ++j) xlsx.write(i+2, j+1, row[cols[j]].toVariant());
+        }
+    }
+    return xlsx.saveAs(filePath);
+}
+
+bool BackupManager::exportTable(const QString &tableName, const QString &filePath)
+{
+    Document xlsx;
+    QStringList cols = m_dbManager->getColumnList(tableName);
+    for(int c=0; c<cols.size(); ++c) xlsx.write(1, c+1, cols[c]);
+
+    QJsonArray data;
+    if (m_dbManager->isHttpMode()) data = m_dbManager->fetchTableDataHttp(tableName);
+    else {
+        QSqlQuery q = m_dbManager->executeQuery("SELECT * FROM public." + tableName);
+        while(q.next()) {
+            QJsonObject row;
+            for(int i=0; i<cols.size(); ++i) row[cols[i]] = QJsonValue::fromVariant(q.value(i));
+            data.append(row);
+        }
+    }
+
+    for(int i=0; i<data.size(); ++i) {
+        QJsonObject row = data[i].toObject();
+        for(int j=0; j<cols.size(); ++j) xlsx.write(i+2, j+1, row[cols[j]].toVariant());
+    }
+    return xlsx.saveAs(filePath);
 }
 
 bool BackupManager::restoreFromBackup(const QString &filePath)
@@ -103,8 +183,7 @@ bool BackupManager::restoreFromBackup(const QString &filePath)
 
     if (m_dbManager->isHttpMode()) {
         QJsonObject json; json["sql"] = sql;
-        // ИСПРАВЛЕН АДРЕС: используем m_serverUrl
-        QByteArray resp = m_dbManager->sendHttpRequest("POST", m_dbManager->serverUrl() + "/api/restore", QJsonDocument(json).toJson());
+        QByteArray resp = m_dbManager->sendHttpRequest("POST", m_dbManager->serverUrl() + "/api/execute-query", QJsonDocument(json).toJson());
         return !resp.isEmpty();
     }
 
@@ -130,9 +209,6 @@ bool BackupManager::executeSQLScript(const QString &sqlScript)
     return m_dbManager->commitTransaction();
 }
 
-bool BackupManager::exportAllTablesToXlsx() { return false; }
-bool BackupManager::exportTable(const QString&, const QString&) { return false; }
-bool BackupManager::restoreTableFromBackup(const QString&) { return false; }
+bool BackupManager::restoreTableFromBackup(const QString &filePath) { return restoreFromBackup(filePath); }
 QString BackupManager::generateTableDDL(const QString&) { return ""; }
-QString BackupManager::generateTableDML(const QString&) { return ""; }
-QString BackupManager::getQueriesExportPath(const QString &format) const { return ""; }
+QString BackupManager::generateTableDML(const QString& t) { return generateSQLBackup(t); }

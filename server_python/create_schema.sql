@@ -1,5 +1,5 @@
 -- Скрипт создания структуры БД "Военкомат"
--- Соответствует DbConstants.h
+-- Соответствует требованиям Лабораторной работы №1
 
 DROP TABLE IF EXISTS public.conscripts_events CASCADE;
 DROP TABLE IF EXISTS public.conscripts_commissioners CASCADE;
@@ -11,7 +11,7 @@ DROP TABLE IF EXISTS public.conscripts CASCADE;
 DROP TABLE IF EXISTS public.commissioners CASCADE;
 DROP TABLE IF EXISTS public.fitness_categories CASCADE;
 
--- 1. Категории годности
+-- 1. [LookUp] Категории годности
 CREATE TABLE public.fitness_categories (
     category_id SERIAL PRIMARY KEY,
     category_name VARCHAR(10) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE public.fitness_categories (
     category_basis TEXT
 );
 
--- 2. Комиссары
+-- 2. [LookUp] Комиссары
 CREATE TABLE public.commissioners (
     commissioner_id SERIAL PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE public.commissioners (
     phone_number VARCHAR(20)
 );
 
--- 3. Призывники
+-- 3. [Main] Призывники
 CREATE TABLE public.conscripts (
     conscript_id SERIAL PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE public.military_id_cards (
     category_id INTEGER REFERENCES public.fitness_categories(category_id)
 );
 
--- 6. Учетные карты (Service Records)
+-- 6. Учетные карты
 CREATE TABLE public.service_record_cards (
     card_id SERIAL PRIMARY KEY,
     card_number VARCHAR(50),
@@ -78,11 +78,10 @@ CREATE TABLE public.callup_events (
     event_type VARCHAR(100),
     event_datetime TIMESTAMP,
     event_location TEXT,
-    commissioner_full_name VARCHAR(255),
     commissioner_id INTEGER REFERENCES public.commissioners(commissioner_id)
 );
 
--- 8. Связь Призывники-Комиссары (Many-to-Many)
+-- 8. Связь Призывники-Комиссары (M2M)
 CREATE TABLE public.conscripts_commissioners (
     conscript_id INTEGER REFERENCES public.conscripts(conscript_id) ON DELETE CASCADE,
     commissioner_id INTEGER REFERENCES public.commissioners(commissioner_id) ON DELETE CASCADE,
@@ -90,3 +89,63 @@ CREATE TABLE public.conscripts_commissioners (
     office_number VARCHAR(10),
     PRIMARY KEY (conscript_id, commissioner_id)
 );
+
+-- ==========================================
+-- ПЕРВИЧНОЕ НАПОЛНЕНИЕ (СПРАВОЧНИКИ)
+-- ==========================================
+
+INSERT INTO public.fitness_categories (category_name, restriction_description, category_index) VALUES
+('А', 'Годен к военной службе', 1),
+('Б', 'Годен с незначительными ограничениями', 2),
+('В', 'Ограниченно годен', 3),
+('Г', 'Временно не годен', 4),
+('Д', 'Не годен к военной службе', 5);
+
+INSERT INTO public.commissioners (full_name, position, years_of_service) VALUES
+('Иванов Иван Иванович', 'Главный комиссар', 20),
+('Петров Петр Петрович', 'Заместитель комиссара', 15),
+('Сидоров Сидор Сидорович', 'Старший инспектор', 10);
+
+-- ==========================================
+-- ТРИГГЕРЫ И ФУНКЦИИ (ЛАБОРАТОРНАЯ №1)
+-- ==========================================
+
+-- Функция для проверки даты рождения (не может быть в будущем)
+CREATE OR REPLACE FUNCTION check_conscript_data() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.birth_date > CURRENT_DATE THEN
+        RAISE EXCEPTION 'Дата рождения не может быть в будущем';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_check_conscript_birth
+BEFORE INSERT OR UPDATE ON public.conscripts
+FOR EACH ROW EXECUTE FUNCTION check_conscript_data();
+
+-- Функция для логирования изменений в призывниках (пример оператора/функции)
+CREATE TABLE IF NOT EXISTS public.audit_log (
+    log_id SERIAL PRIMARY KEY,
+    table_name VARCHAR(50),
+    operation VARCHAR(10),
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    record_id INTEGER
+);
+
+CREATE OR REPLACE FUNCTION log_conscript_changes() RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        INSERT INTO public.audit_log(table_name, operation, record_id) VALUES ('conscripts', 'INSERT', NEW.conscript_id);
+    ELSIF (TG_OP = 'UPDATE') THEN
+        INSERT INTO public.audit_log(table_name, operation, record_id) VALUES ('conscripts', 'UPDATE', NEW.conscript_id);
+    ELSIF (TG_OP = 'DELETE') THEN
+        INSERT INTO public.audit_log(table_name, operation, record_id) VALUES ('conscripts', 'DELETE', OLD.conscript_id);
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_log_conscripts
+AFTER INSERT OR UPDATE OR DELETE ON public.conscripts
+FOR EACH ROW EXECUTE FUNCTION log_conscript_changes();

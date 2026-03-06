@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, List
 from database import execute_query
 from datetime import datetime
 
-app = FastAPI(title="Voenkomat Backend API", version="1.3.0")
+app = FastAPI(title="Voenkomat Backend API", version="1.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 SUPERUSER_PASSWORD = "admin"
+# Справочники (LookUp Tables) - по ТЗ ЛР №1
 LOOKUP_TABLES = ["fitness_categories", "commissioners"]
 
 def is_superuser(token: str) -> bool:
@@ -90,11 +91,8 @@ def get_meta(table_name: str):
 
 @app.get("/api/{table_name}")
 async def get_data(table_name: str, filters: Optional[str] = Query(None)):
-    # ВАЖНО: Базовая защита от SQL инъекций через white-list таблиц
-    # (В продакшене нужно проверять filters более тщательно)
     query = f"SELECT * FROM public.{table_name}"
     if filters:
-        # Очистка фильтров для базовой безопасности
         query += f" WHERE {filters}"
     query += " ORDER BY 1 LIMIT 1000"
     return {"data": execute_query(query)}
@@ -102,12 +100,15 @@ async def get_data(table_name: str, filters: Optional[str] = Query(None)):
 @app.post("/api/execute-query")
 async def run_custom_sql(payload: Dict[str, str] = Body(...), x_auth_token: Optional[str] = Header(None)):
     """Эндпоинт для окна SQL-запросов (QueriesWindow.cpp)"""
+    # ВАЖНО: Разрешаем выполнение запросов, если передан корректный токен
     if not is_superuser(x_auth_token):
         raise HTTPException(status_code=403, detail="Только администратор может выполнять произвольные SQL-запросы")
+
     sql = payload.get("sql", "")
     if not sql: raise HTTPException(status_code=400, detail="SQL пуст")
     try:
         res = execute_query(sql)
+        # Если это SELECT, возвращаем данные, если INSERT/UPDATE/DELETE - инфо о затронутых строках
         return {"status": "success", "data": res}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -116,33 +117,22 @@ async def run_custom_sql(payload: Dict[str, str] = Body(...), x_auth_token: Opti
 async def add_rec(table_name: str, data: Dict[str, Any], x_auth_token: Optional[str] = Header(None)):
     if table_name in LOOKUP_TABLES and not is_superuser(x_auth_token):
         raise HTTPException(status_code=403, detail="Доступ запрещен для справочников")
-
-    cleaned_data = {k: v for k, v in data.items() if v not in ["", "АВТО", None, "Не выбрано (NULL)", "--- Не выбрано (ПУСТО) ---"]}
-    if not cleaned_data: raise HTTPException(status_code=400, detail="Нет данных")
-
+    cleaned_data = {k: v for k, v in data.items() if v not in ["", "АВТО", None, "--- Не выбрано (ПУСТО) ---"]}
     cols = ", ".join(cleaned_data.keys())
-    vals_placeholders = ", ".join(["%s"] * len(cleaned_data))
-    query = f"INSERT INTO public.{table_name} ({cols}) VALUES ({vals_placeholders}) RETURNING *"
-
-    res = execute_query(query, list(cleaned_data.values()))
-    pk = get_pk_column(table_name)
-    new_id = res[0][pk]
-    sync_bidirectional_links(table_name, new_id, cleaned_data)
+    vals = list(cleaned_data.values())
+    placeholders = ", ".join(["%s"] * len(vals))
+    res = execute_query(f"INSERT INTO public.{table_name} ({cols}) VALUES ({placeholders}) RETURNING *", vals)
     return {"status": "success", "data": res[0]}
 
 @app.put("/api/{table_name}/{record_id}")
 async def update_rec(table_name: str, record_id: Any, data: Dict[str, Any], x_auth_token: Optional[str] = Header(None)):
     if table_name in LOOKUP_TABLES and not is_superuser(x_auth_token):
         raise HTTPException(status_code=403, detail="Доступ запрещен")
-
     pk = get_pk_column(table_name)
     sets = ", ".join([f"{k} = %s" for k in data.keys() if k != pk])
     vals = [v for k, v in data.items() if k != pk]
     vals.append(record_id)
-
-    query = f"UPDATE public.{table_name} SET {sets} WHERE {pk} = %s RETURNING *"
-    res = execute_query(query, vals)
-    sync_bidirectional_links(table_name, record_id, data)
+    res = execute_query(f"UPDATE public.{table_name} SET {sets} WHERE {pk} = %s RETURNING *", vals)
     return {"status": "success", "data": res[0]}
 
 @app.delete("/api/{table_name}/{record_id}")
@@ -166,5 +156,4 @@ async def create_backup(x_auth_token: Optional[str] = Header(None)):
 
 if __name__ == "__main__":
     import uvicorn
-    # Слушаем на всех интерфейсах для надежности
     uvicorn.run(app, host="0.0.0.0", port=8000)

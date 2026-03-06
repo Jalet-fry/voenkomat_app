@@ -413,7 +413,16 @@ void MainWindow::createBackup() {
     if (dialog.exec() == QDialog::Accepted) {
         if (dialog.textValue() == "admin") {
             m_dbManager->setAuthToken("admin");
-            if (m_dbManager->createBackupHttp()) QMessageBox::information(this, "Успех", "Бэкап успешно создан.");
+            bool success = false;
+            if (m_dbManager->isHttpMode()) {
+                success = m_dbManager->createBackupHttp();
+            } else {
+                BackupManager backupManager(m_dbManager);
+                success = backupManager.exportAllTables();
+            }
+
+            if (success) QMessageBox::information(this, "Успех", "Бэкап успешно создан.");
+            else QMessageBox::critical(this, "Ошибка", "Не удалось создать бэкап.");
         } else {
             QMessageBox msg(this); msg.setStyleSheet(dlgStyle + " QLabel { color: #c0392b; }");
             msg.setWindowTitle("Ошибка"); msg.setText("Неверный пароль!"); msg.exec();

@@ -64,10 +64,15 @@ QSqlQuery DatabaseManager::executeQuery(const QString &query, bool *ok)
 QJsonArray DatabaseManager::executeCustomQueryHttp(const QString &sql, bool *ok)
 {
     QJsonObject json; json["sql"] = sql;
+    // ВАЖНО: Мы должны отправить запрос на /api/execute-query
     QByteArray response = sendHttpRequest("POST", m_serverUrl + "/api/execute-query", QJsonDocument(json).toJson());
-    if (response.isEmpty()) { if (ok) *ok = false; return QJsonArray(); }
+    if (response.isEmpty()) {
+        if (ok) *ok = false;
+        return QJsonArray();
+    }
     if (ok) *ok = true;
-    return QJsonDocument::fromJson(response).object()["data"].toArray();
+    QJsonDocument doc = QJsonDocument::fromJson(response);
+    return doc.object()["data"].toArray();
 }
 
 QJsonArray DatabaseManager::fetchTableDataHttp(const QString &tableName, const QString &filters)
