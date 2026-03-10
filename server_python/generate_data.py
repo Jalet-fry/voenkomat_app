@@ -52,8 +52,8 @@ def generate():
                 public.military_id_cards, 
                 public.service_record_cards, 
                 public.callup_events, 
-                public.conscripts_commissioners, 
-                public.conscripts_events 
+                public.conscripts_commissioners,
+                public.conscripts_events
             RESTART IDENTITY CASCADE;
         """)
         print("Таблицы очищены.")
@@ -84,7 +84,7 @@ def generate():
             """, (fake.name(), "Полковник", random.randint(10, 25), fake.phone_number()))
             commissioner_ids.append(cur.fetchone()[0])
         print(f"Сгенерировано {len(commissioner_ids)} комиссаров.")
-        
+
         # 3. Призывники (200 человек)
         print("Генерация 200 призывников и связанных данных...")
         for i in range(200):
@@ -100,11 +100,11 @@ def generate():
                     INSERT INTO medical_examinations (examination_date, examination_results, doctor_full_name, conclusion, conscript_id, category_id)
                     VALUES (%s, %s, %s, %s, %s, %s);
                 """, (
-                    fake.date_between(start_date='-2y', end_date='today'), 
-                    "В пределах нормы", 
-                    fake.name_male(), 
-                    "Годен", 
-                    conscript_id, 
+                    fake.date_between(start_date='-2y', end_date='today'),
+                    "В пределах нормы",
+                    fake.name_male(),
+                    "Годен",
+                    conscript_id,
                     random.choice(category_ids)
                 ))
             

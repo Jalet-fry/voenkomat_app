@@ -1,0 +1,34 @@
+#ifndef DATABASEMANAGER_H
+#define DATABASEMANAGER_H
+
+#include <QObject>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QSqlError>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QSqlRecord>
+#include <QThread>
+#include <QVariantList>
+
+class DatabaseManager : public QObject
+{
+    Q_OBJECT
+public:
+    static DatabaseManager& instance();
+    ~DatabaseManager();
+    bool connectToDatabase();
+
+    QJsonArray executeSelect(const QString &queryStr, const QVariantList &params = {});
+    QJsonObject executeModify(const QString &queryStr, const QVariantList &params = {});
+
+    QString getPrimaryKeyColumn(const QString &tableName);
+
+private:
+    explicit DatabaseManager(QObject *parent = nullptr);
+    QString m_host, m_dbName, m_user, m_pass;
+    int m_port;
+    QSqlDatabase db();
+};
+
+#endif // DATABASEMANAGER_H
