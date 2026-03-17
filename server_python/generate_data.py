@@ -12,7 +12,7 @@ def get_db_config():
     config = configparser.ConfigParser()
     # Path to config.ini in the root directory
     config_path = os.path.join(os.path.dirname(__file__), "..", "config.ini")
-    
+
     # Default parameters
     db_params = {
         "host": "localhost",
@@ -21,7 +21,7 @@ def get_db_config():
         "user": "postgres",
         "password": ""
     }
-    
+
     if os.path.exists(config_path):
         config.read(config_path, encoding="utf-8")
         if "Database" in config:
@@ -29,7 +29,7 @@ def get_db_config():
             db_params["database"] = config["Database"].get("database", "military_db")
             db_params["user"] = config["Database"].get("username", "postgres")
             db_params["password"] = config["Database"].get("password", "")
-            
+
     return db_params
 
 fake = Faker('ru_RU')
@@ -107,7 +107,7 @@ def generate():
                     conscript_id,
                     random.choice(category_ids)
                 ))
-            
+
             # 5. Военный билет (для 70% призывников)
             if random.random() < 0.7:
                  cur.execute("""

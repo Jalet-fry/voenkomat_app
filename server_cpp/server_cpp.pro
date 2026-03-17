@@ -8,12 +8,16 @@ TEMPLATE = app
 
 SOURCES += main.cpp \
     DatabaseManager.cpp \
-    RestServer.cpp
+    RestServer.cpp \
+    Converter.cpp \
+    DataGenerator.cpp
 
 HEADERS += \
     DatabaseManager.h \
-    RestServer.h
+    RestServer.h \
+    Converter.h \
+    DataGenerator.h
 
-# Путь к библиотекам PostgreSQL (настройте под свою систему, если нужно)
- INCLUDEPATH += "C:/Program Files/PostgreSQL/16/include"
+# Путь к библиотекам PostgreSQL
+INCLUDEPATH += "C:/Program Files/PostgreSQL/16/include"
 # LIBS += -L"C:/Program Files/PostgreSQL/16/lib" -lpq

@@ -4,6 +4,7 @@
 #include <QDebug>
 #include <QThread>
 #include <QFile>
+#include <QCoreApplication>
 
 DatabaseManager::DatabaseManager(QObject *parent) : QObject(parent) {}
 
@@ -20,18 +21,32 @@ DatabaseManager& DatabaseManager::instance() {
 }
 
 bool DatabaseManager::connectToDatabase() {
-    QString configPath = QDir::current().absoluteFilePath("../../../../config.ini");
+    // Ищем конфиг относительно папки с EXE (поднимаемся из build/debug в корень проекта)
+    QString appDir = QCoreApplication::applicationDirPath();
 
-    if (!QFile::exists(configPath)) {
-        qCritical() << "Config file not found:" << configPath;
+    // Пытаемся найти config.ini в разных местах (в текущей папке или выше)
+    QStringList paths;
+    paths << appDir + "/config.ini";
+    paths << appDir + "/../config.ini";
+    paths << appDir + "/../../config.ini";
+    paths << appDir + "/../../../config.ini";
+    paths << appDir + "/../../../../config.ini";
+
+    QString configPath;
+    for (const QString &p : paths) {
+        if (QFile::exists(p)) {
+            configPath = QDir::cleanPath(p);
+            break;
+        }
+    }
+
+    if (configPath.isEmpty()) {
+        qCritical() << "CRITICAL: config.ini not found in search paths!";
         return false;
     }
 
+    qInfo() << "Using config file:" << configPath;
     QSettings settings(configPath, QSettings::IniFormat);
-    if (settings.status() != QSettings::NoError) {
-        qCritical() << "Failed to read config file:" << configPath;
-        return false;
-    }
 
     settings.beginGroup("Database");
     m_host = settings.value("host", "localhost").toString();
@@ -41,18 +56,12 @@ bool DatabaseManager::connectToDatabase() {
     m_pass = settings.value("password", "").toString();
     settings.endGroup();
 
-    // Проверяем подключение
     QSqlDatabase testDb = db();
-    if (testDb.isOpen()) {
-        qInfo() << "Successfully connected to database" << m_dbName;
-        return true;
-    }
-    return false;
+    return testDb.isOpen();
 }
 
 QSqlDatabase DatabaseManager::db() {
     QString connName = QString("conn_%1").arg(quintptr(QThread::currentThreadId()));
-
     if (QSqlDatabase::contains(connName)) {
         QSqlDatabase d = QSqlDatabase::database(connName);
         if (d.isOpen()) return d;
@@ -68,7 +77,7 @@ QSqlDatabase DatabaseManager::db() {
     d.setPassword(m_pass);
 
     if (!d.open()) {
-        qCritical() << "Database connection failed in thread" << QThread::currentThreadId() << ":" << d.lastError().text();
+        qCritical() << "Database connection failed:" << d.lastError().text();
     }
     return d;
 }
@@ -90,7 +99,7 @@ QJsonArray DatabaseManager::executeSelect(const QString &queryStr, const QVarian
             results.append(obj);
         }
     } else {
-        qWarning() << "SQL Error:" << query.lastError().text() << "Query:" << queryStr;
+        qWarning() << "SQL Error:" << query.lastError().text();
     }
     return results;
 }
@@ -104,28 +113,25 @@ QJsonObject DatabaseManager::executeModify(const QString &queryStr, const QVaria
     if (query.exec()) {
         res["status"] = "success";
         QJsonArray dataList;
-
-        // В PostgreSQL INSERT/UPDATE/DELETE с RETURNING возвращают данные как SELECT
-        if (query.isSelect() || query.isActive()) {
-             QSqlRecord rec = query.record();
-             if (rec.count() > 0) {
-                 while (query.next()) {
-                     QJsonObject row;
-                     for (int i = 0; i < rec.count(); ++i) {
-                         QVariant val = query.value(i);
-                         row[rec.fieldName(i)] = val.isNull() ? QJsonValue::Null : QJsonValue::fromVariant(val);
-                     }
-                     dataList.append(row);
-                 }
-             }
+        QSqlRecord rec = query.record();
+        if (rec.count() > 0) {
+            while (query.next()) {
+                QJsonObject row;
+                for (int i = 0; i < rec.count(); ++i) {
+                    QVariant val = query.value(i);
+                    row[rec.fieldName(i)] = val.isNull() ? QJsonValue::Null : QJsonValue::fromVariant(val);
+                }
+                dataList.append(row);
+            }
         }
-
+        if (dataList.isEmpty()) {
+            QJsonObject affected; affected["rows_affected"] = query.numRowsAffected();
+            dataList.append(affected);
+        }
         res["data"] = dataList;
-        res["rows_affected"] = query.numRowsAffected();
     } else {
         res["status"] = "error";
         res["message"] = query.lastError().text();
-        qWarning() << "SQL Error:" << query.lastError().text() << "Query:" << queryStr;
     }
     return res;
 }

@@ -23,6 +23,8 @@
 #include <QDir>
 #include <QPushButton>
 #include <QSqlRecord>
+#include "xlsxdocument.h"
+#include "xlsxformat.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -215,8 +217,10 @@ void MainWindow::setupClassicUI()
     m_menuBar->setFocusPolicy(Qt::NoFocus);
 
     QMenu *fileMenu = m_menuBar->addMenu("&File");
+    fileMenu->addAction("Login as Admin...", this, &MainWindow::loginAsAdmin);
+    fileMenu->addAction("Logout Admin", this, &MainWindow::logoutAdmin);
+    fileMenu->addSeparator();
     fileMenu->addAction("Exit", QKeySequence("Ctrl+E"), this, &MainWindow::exitApp);
-
     m_tablesMenu = m_menuBar->addMenu("&Tables");
     refreshTablesMenu();
 
@@ -269,16 +273,40 @@ void MainWindow::setupClassicUI()
     m_layout->addWidget(m_classicFooter);
 }
 
-void MainWindow::viewActiveTable()
-{
+void MainWindow::viewActiveTable() {
     if (m_activeTable.isEmpty() || !m_dbManager->isConnected()) return;
     QStringList lookupTables = {"fitness_categories", "commissioners"};
     bool isLookup = lookupTables.contains(m_activeTable);
     bool canEdit = !isLookup || m_dbManager->isSuperuser();
     if (m_activeTableLabel) {
-        m_activeTableLabel->setText("Active Table: [ " + m_activeTable.toUpper() + " ]" + (canEdit ? "" : " (READ ONLY)"));
-        m_activeTableLabel->setStyleSheet(canEdit ? "background-color: #2f3640; color: #ffffff; padding: 8px; border-radius: 4px; font-weight: bold;"
-                                                  : "background-color: #c0392b; color: #ffffff; padding: 8px; border-radius: 4px; font-weight: bold;");
+        bool isAdmin = m_dbManager->isSuperuser();
+        QString statusText = "Active Table: [ " + m_activeTable.toUpper() + " ]";
+
+        if (isAdmin) {
+            statusText += " (ADMIN MODE)";
+        } else if (!canEdit) {
+            statusText += " (READ ONLY)";
+        }
+
+        m_activeTableLabel->setText(statusText);
+
+        // Цветовая индикация
+        if (isAdmin) {
+            m_activeTableLabel->setStyleSheet(
+                    "background-color: #e67e22; color: white; padding: 8px; "
+                    "border-radius: 4px; font-weight: bold;"
+            );
+        } else if (!canEdit) {
+            m_activeTableLabel->setStyleSheet(
+                    "background-color: #c0392b; color: white; padding: 8px; "
+                    "border-radius: 4px; font-weight: bold;"
+            );
+        } else {
+            m_activeTableLabel->setStyleSheet(
+                    "background-color: #2f3640; color: white; padding: 8px; "
+                    "border-radius: 4px; font-weight: bold;"
+            );
+        }
     }
     QStringList cols = m_dbManager->getColumnList(m_activeTable);
     if (m_filterColumnCombo) { m_filterColumnCombo->clear(); m_filterColumnCombo->addItems(cols); }
@@ -421,12 +449,90 @@ void MainWindow::createBackup() {
                 success = backupManager.exportAllTables();
             }
 
-            if (success) QMessageBox::information(this, "Успех", "Бэкап успешно создан.");
-            else QMessageBox::critical(this, "Ошибка", "Не удалось создать бэкап.");
+            if (success) {
+                QString filePath;
+                if (m_dbManager->isHttpMode()) {
+                    // В HTTP режиме путь приходит от сервера
+                    // (нужно добавить в API возврат пути)
+                    filePath = "на сервере: exports/backups/...";
+                } else {
+                    // Локальный режим - формируем путь
+                    QString timestamp = QDateTime::currentDateTime().toString(
+                            "yyyy-MM-dd_HH-mm-ss");
+                    filePath = BackupManager(m_dbManager).getBackupsExportPath("sql") +
+                               "/backup_" + timestamp + ".sql";
+                }
+
+                QMessageBox msg(this);
+                msg.setWindowTitle("Успех");
+                msg.setText(QString("Бэкап успешно создан:\n%1").arg(filePath));
+                msg.setStyleSheet(
+                        "QMessageBox { background-color: #c0c0c0; } QLabel { color: black; }");
+                msg.exec();
+            } else {
+                QMessageBox::critical(this, "Ошибка", "Не удалось создать бэкап.");
+            }
         } else {
-            QMessageBox msg(this); msg.setStyleSheet(dlgStyle + " QLabel { color: #c0392b; }");
-            msg.setWindowTitle("Ошибка"); msg.setText("Неверный пароль!"); msg.exec();
+            QMessageBox msg(this);
+            msg.setStyleSheet(dlgStyle + " QLabel { color: #c0392b; }");
+            msg.setWindowTitle("Ошибка");
+            msg.setText("Неверный пароль!");
+            msg.exec();
         }
+    }
+}
+
+void MainWindow::loginAsAdmin()
+{
+    QInputDialog dialog(this);
+    dialog.setWindowTitle("Авторизация администратора");
+    dialog.setLabelText("Введите пароль:");
+    dialog.setTextEchoMode(QLineEdit::Password);
+
+    // Стиль под CUA
+    dialog.setStyleSheet(
+            "QInputDialog { background-color: #c0c0c0; border: 2px solid #000080; }"
+            "QLabel { color: black; font-weight: bold; }"
+            "QLineEdit { background-color: white; color: black; border: 1px solid black; }"
+            "QPushButton { background-color: #c0c0c0; color: black; border: 1px solid black; }"
+    );
+
+    if (dialog.exec() == QDialog::Accepted) {
+        QString password = dialog.textValue();
+        if (password == "admin") {  // Пароль из ТЗ
+            m_dbManager->setAuthToken("admin");
+            updateConnectionStatus();
+            viewActiveTable();
+
+            QMessageBox msg(this);
+            msg.setWindowTitle("Успех");
+            msg.setText("Режим администратора активирован.");
+            msg.setStyleSheet("QMessageBox { background-color: #c0c0c0; } QLabel { color: black; }");
+            msg.exec();
+        } else {
+            QMessageBox msg(this);
+            msg.setWindowTitle("Ошибка");
+            msg.setText("Неверный пароль!");
+            msg.setStyleSheet("QMessageBox { background-color: #c0c0c0; } QLabel { color: black; }");
+            msg.exec();
+        }
+    }
+}
+
+void MainWindow::logoutAdmin()
+{
+    if (!m_dbManager->isSuperuser()) return;
+
+    QMessageBox confirm(this);
+    confirm.setWindowTitle("Выход из режима администратора");
+    confirm.setText("Вы действительно хотите выйти из режима администратора?");
+    confirm.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+    confirm.setStyleSheet("QMessageBox { background-color: #c0c0c0; } QLabel { color: black; }");
+
+    if (confirm.exec() == QMessageBox::Yes) {
+        m_dbManager->setAuthToken("");
+        updateConnectionStatus();
+        viewActiveTable();
     }
 }
 
@@ -449,29 +555,100 @@ void MainWindow::updateConnectionStatus() {
         if (lIn) lIn->setVisible(!admin);
         if (lOut) lOut->setVisible(admin);
     }
+    if (m_isClassicUI && m_classicFooter) {
+        bool admin = m_dbManager->isSuperuser();
+        QString footerText = admin
+                             ? " [ADMIN] F1-Help | Tab-Navigation | F10-Menu | Alt+F/T/O-Shortcuts "
+                             : " F1-Help | Tab-Navigation | F10-Menu | Alt+F/T/O-Shortcuts ";
+
+        if (admin) {
+            m_classicFooter->setStyleSheet(
+                    "background-color: #e67e22; color: white; font-weight: bold; "
+                    "padding: 4px; font-family: 'Consolas';"
+            );
+        } else {
+            m_classicFooter->setStyleSheet(
+                    "background-color: #000080; color: white; padding: 4px; "
+                    "font-family: 'Consolas';"
+            );
+        }
+        m_classicFooter->setText(footerText);
+    }
 }
 
 void MainWindow::saveQueryResult() {
-    if (m_activeTable.isEmpty()) return;
-    QJsonArray data;
-    if (m_dbManager->isHttpMode()) {
-        data = m_dbManager->fetchTableDataHttp(m_activeTable);
-    } else {
-        bool ok;
-        QSqlQuery query = m_dbManager->executeQuery("SELECT * FROM public." + m_activeTable, &ok);
-        if (ok) {
-            while (query.next()) {
-                QJsonObject row;
-                for (int i = 0; i < query.record().count(); ++i)
-                    row[query.record().fieldName(i)] = QJsonValue::fromVariant(query.value(i));
-                data.append(row);
-            }
+    qDebug() << "=== saveQueryResult START ===";
+    qDebug() << "m_activeTable:" << m_activeTable;
+
+    if (m_activeTable.isEmpty()) {
+        qDebug() << "ERROR: m_activeTable is empty!";
+        return;
+    }
+
+    QList <QList<QVariant>> rows;
+    QStringList headers;
+
+    // Берем заголовки из таблицы
+    for (int col = 0; col < m_mainTable->columnCount(); ++col) {
+        headers << m_mainTable->horizontalHeaderItem(col)->text();
+    }
+
+    // Берем данные из таблицы (только то, что видим!)
+    for (int row = 0; row < m_mainTable->rowCount(); ++row) {
+        QList <QVariant> rowData;
+        for (int col = 0; col < m_mainTable->columnCount(); ++col) {
+            QTableWidgetItem *item = m_mainTable->item(row, col);
+            rowData << (item ? item->text() : "");
+        }
+        rows << rowData;
+    }
+
+    qDebug() << "Rows to save:" << rows.size();
+
+    if (rows.isEmpty()) {
+        QMessageBox::warning(this, "Предупреждение", "Нет данных для сохранения!");
+        return;
+    }
+
+    // Сохраняем в Excel
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+    QString fileName = QString("%1_filtered_%2.xlsx").arg(m_activeTable).arg(timestamp);
+
+    QString filePath = QFileDialog::getSaveFileName(
+            this, "Сохранить результат в Excel", fileName, "Excel Files (*.xlsx)"
+    );
+
+    if (filePath.isEmpty()) return;
+
+    // Используем QXlsx для сохранения
+    QXlsx::Document xlsx;
+
+    // Заголовки
+    for (int col = 0; col < headers.size(); ++col) {
+        xlsx.write(1, col + 1, headers[col]);
+    }
+
+    // Данные
+    for (int row = 0; row < rows.size(); ++row) {
+        for (int col = 0; col < rows[row].size(); ++col) {
+            xlsx.write(row + 2, col + 1, rows[row][col]);
         }
     }
-    QString fileName = QFileDialog::getSaveFileName(this, "Сохранить", "", "JSON (*.json)");
-    if (!fileName.isEmpty()) {
-        QFile file(fileName);
-        if (file.open(QIODevice::WriteOnly)) { file.write(QJsonDocument(data).toJson()); file.close(); }
+
+    if (xlsx.saveAs(filePath)) {
+        QMessageBox msg(this);
+        msg.setWindowTitle("Успех");
+        msg.setText(QString("Результат успешно сохранен в Excel!\n\n"
+                            "Таблица: %1\n"
+                            "Записей: %2\n"
+                            "Файл: %3")
+                            .arg(m_activeTable)
+                            .arg(rows.size())
+                            .arg(filePath));
+        msg.setStyleSheet("QMessageBox { background-color: #c0c0c0; } QLabel { color: black; }");
+        msg.exec();
+    } else {
+        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить файл!");
     }
 }
 

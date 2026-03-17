@@ -49,6 +49,10 @@ private slots:
     void saveQueryResult();
     void createBackup();
 
+    // Авторизация (Новое для CUA)
+    void loginAsAdmin();
+    void logoutAdmin();
+
     // Служебные
     void applyFilter();
     void onTableSelected(const QString &tableName);

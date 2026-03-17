@@ -19,14 +19,20 @@ QJsonObject cleanInputData(const QJsonObject &data) {
     QStringList skipValues = {"", "АВТО", "--- Не выбрано (ПУСТО) ---"};
     for (auto it = data.begin(); it != data.end(); ++it) {
         if (it.value().isNull()) continue;
-        QString valStr = it.value().toString();
-        if (valStr == "Не выбрано (NULL)") {
-            cleaned.insert(it.key(), QJsonValue::Null);
-            continue;
+
+        // Исправлено: Проверяем skipValues только если это строка.
+        // Иначе (числа, булевы значения) - оставляем как есть.
+        if (it.value().isString()) {
+            QString valStr = it.value().toString();
+            if (valStr == "Не выбрано (NULL)") {
+                cleaned.insert(it.key(), QJsonValue::Null);
+                continue;
+            }
+            if (skipValues.contains(valStr)) {
+                continue;
+            }
         }
-        if (!skipValues.contains(valStr)) {
-            cleaned.insert(it.key(), it.value());
-        }
+        cleaned.insert(it.key(), it.value());
     }
     return cleaned;
 }
@@ -78,7 +84,7 @@ void RestServer::setupRoutes() {
         });
     });
 
-    // 2. Custom Query (СПЕЦИФИЧЕСКИЕ МАРШРУТЫ ПЕРВЫМИ!)
+    // 2. Custom Query
     m_server.route("/api/execute-query", QHttpServerRequest::Method::Post,
                    [](const QHttpServerRequest &req) {
                        if (req.value("x-auth-token") != SUPERUSER_PASSWORD) {
@@ -95,7 +101,10 @@ void RestServer::setupRoutes() {
                                    {"data", DatabaseManager::instance().executeSelect(sql)}
                            };
                        } else {
-                           result = DatabaseManager::instance().executeModify(sql);
+                           QJsonObject modifyRes = DatabaseManager::instance().executeModify(sql);
+                           result["status"] = modifyRes["status"];
+                           // Python возвращает список даже для UPDATE/DELETE (rows_affected в первом элементе)
+                           result["data"] = modifyRes["data"];
                        }
                        return QHttpServerResponse(result);
                    }
@@ -245,6 +254,12 @@ void RestServer::setupRoutes() {
                                QJsonObject newRec = dataArray.first().toObject();
                                QString pk = DatabaseManager::instance().getPrimaryKeyColumn(tableName);
                                syncBidirectionalLinks(tableName, newRec[pk].toVariant(), data);
+
+                               // Исправлено: возвращаем объект в поле data, а не массив (как в Python)
+                               return QHttpServerResponse(QJsonObject{
+                                   {"status", "success"},
+                                   {"data", newRec}
+                               });
                            }
                        }
                        return QHttpServerResponse(res);
@@ -282,6 +297,14 @@ void RestServer::setupRoutes() {
                        QJsonObject res = DatabaseManager::instance().executeModify(sql, vals);
                        if (res["status"] == "success") {
                            syncBidirectionalLinks(tableName, id, data);
+
+                           QJsonArray dataArray = res["data"].toArray();
+                           if (!dataArray.isEmpty()) {
+                               return QHttpServerResponse(QJsonObject{
+                                   {"status", "success"},
+                                   {"data", dataArray.first().toObject()}
+                               });
+                           }
                        }
                        return QHttpServerResponse(res);
                    }
@@ -298,7 +321,13 @@ void RestServer::setupRoutes() {
                        QString pk = DatabaseManager::instance().getPrimaryKeyColumn(tableName);
                        QString sql = QString("DELETE FROM public.%1 WHERE %2 = ?")
                                .arg(tableName, pk);
-                       return QHttpServerResponse(DatabaseManager::instance().executeModify(sql, {id}));
+
+                       QJsonObject res = DatabaseManager::instance().executeModify(sql, {id});
+                       if (res["status"] == "success") {
+                           // Python возвращает просто статус
+                           return QHttpServerResponse(QJsonObject{{"status", "success"}});
+                       }
+                       return QHttpServerResponse(res);
                    }
     );
 }
