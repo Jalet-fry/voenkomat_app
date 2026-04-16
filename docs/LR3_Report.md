@@ -53,19 +53,19 @@
 
 В таблице 1.1 приведено описание формата хранения данных, конвертированных из таблиц PostgreSQL в базы данных BerkeleyDB. В полях таблицы приведены названия столбцов таблиц PostgreSQL.
 
-**Таблица 1.1 – Формат хранения данных в BerkeleyDB**
+**Таблица 1.1 – Формат хранения данных в NoSQL (C++ Key-Value)**
 
 | Таблица PostgreSQL | BerkeleyDB Ключ | Значение (JSON) |
 | :--- | :--- | :--- |
-| **comissar** | id_comissar | {fio, dolzhnost, stazh_raboty, kontaktnyi_telefon} |
-| **kategoria_godnosti** | id_kategorii | {nazvanie_kategorii, opisanie_ogranichenii, index_kategorii...} |
-| **med_osvidetelstvovanie** | id_osvidetelstvovania | {data_provedeniya, rezultaty_obsledovania, fio_vracha, zaklyuchenie, id_prizivnika, id_kategorii} |
-| **prizivnik** | id_prizivnik | {fio, data_rozhdeniya, adres_prozhivaniya, nomer_pasporta, id_voennogo_bileta, id_voenno_uchetnoi_karty} |
-| **prizivnoe_meropriyatie** | id_meropriyatiya | {tip_meropriyatiya, data_provedeniya, mesto_provedeniya, fio_comissara, id_comissar} |
-| **voenno_uchetnaya_karta** | id_karty | {nomer_karty, data_postanovki_na_uchet, istoriya_otsrochek, voenno_uchetnaya_specialnost, id_prizivnika} |
-| **voennyi_bilet** | id_bileta | {nomer_bileta, data_vydachi, voinskoe_zvanie, kategoria, id_prizivnika, id_kategorii} |
-| **prizivnik_comissar** | {id_prizivnik}_{id_comissar} | {id_prizivnik, id_comissar, data_vzaimodeistviya, nomer_kabineta} |
-| **prizivnik_meropriyatie** | {id_prizivnik}_{id_meropriyatiya} | {id_prizivnik, id_meropriyatiya} |
+| **commissioners** | commissioner_id | {full_name, position, work_experience, contact_phone} |
+| **fitness_categories** | category_id | {category_name, restrictions_description, category_index} |
+| **medical_examinations** | examination_id | {exam_date, results, doctor_name, conclusion, conscript_id, category_id} |
+| **conscripts** | conscript_id | {full_name, birth_date, residence_address, passport_number, military_ticket_id, registration_card_id} |
+| **callup_events** | event_id | {event_type, event_date, event_location, commissioner_id} |
+| **service_record_cards** | card_id | {card_number, registration_date, deferment_history, military_specialty, conscript_id} |
+| **military_id_cards** | ticket_id | {ticket_number, issue_date, military_rank, category_id, conscript_id} |
+| **conscripts_commissioners** | {conscript_id}_{commissioner_id} | {conscript_id, commissioner_id, interaction_date, room_number} |
+| **conscripts_events** | {conscript_id}_{event_id} | {conscript_id, event_id} |
 
 <br>
 
@@ -129,7 +129,26 @@ JOIN kategoria_godnosti k ON m.id_kategorii = k.id_kategorii;
 *   **Значение (Value):** Текстовая строка в формате JSON. JSON позволяет хранить вложенные структуры и легко расширять набор полей без изменения схемы базы данных (Schema-less).
 
 **Физическая структура:**
-Все сгенерированные базы данных располагаются в директории `server_python/nosql_db`. Для каждой таблицы создается файл с расширением `.db`.
+Все сгенерированные базы данных располагаются в директории `nosql_db_cpp/`. Для каждой таблицы создается два файла:
+1. `.db` — бинарный файл (использует `QDataStream`) для быстрого программного доступа.
+2. `.db.txt` — текстовый дамп для отладки и визуального контроля.
+
+### 2.2 Примеры сгенерированных данных
+
+Ниже приведены фрагменты содержимого текстовых дампов, подтверждающие успешную конвертацию.
+
+**Таблица conscripts (Простой ключ):**
+```text
+1 ||| {"birth_date":"2000-03-15","full_name":"Александров Алексей Сергеевич","military_ticket_id":1,"passport_number":"MP1234567","registration_card_id":1,"residence_address":"г. Минск, ул. Ленина, 15"}
+2 ||| {"birth_date":"1999-07-22","full_name":"Борисов Борис Борисович","military_ticket_id":2,"passport_number":"MP2345678","registration_card_id":2,"residence_address":"г. Гомель, ул. Советская, 8"}
+```
+
+**Таблица conscripts_events (Составной ключ):**
+```text
+1_1 ||| {"conscript_id":1,"event_id":1}
+2_2 ||| {"conscript_id":2,"event_id":2}
+3_3 ||| {"conscript_id":3,"event_id":3}
+```
 
 ---
 <br><br>
@@ -250,13 +269,28 @@ if __name__ == "__main__":
 #include <QSqlError>
 #include <QDir>
 #include <QDebug>
+#include <QTextStream>
+#include <QDataStream>
+#include <QCoreApplication>
+
+Converter::Converter(QObject *parent) : QObject(parent) {}
 
 void Converter::run()
 {
     qInfo() << "--- ЛАБОРАТОРНАЯ РАБОТА №3: NoSQL КОНВЕРТЕР (C++) ---";
 
-    QSqlDatabase db = QSqlDatabase::database();
-    QString nosqlDir = "nosql_db_cpp";
+    QSqlDatabase db = QSqlDatabase::database(QSqlDatabase::connectionNames().first());
+    if (!db.isOpen()) {
+        qCritical() << "Database not open!";
+        return;
+    }
+
+    // Определяем корень проекта
+    QString appDir = QCoreApplication::applicationDirPath();
+    QDir dir(appDir);
+    while (!dir.exists("config.ini") && dir.cdUp()) { }
+
+    QString nosqlDir = dir.absoluteFilePath("nosql_db_cpp");
     QDir().mkpath(nosqlDir);
 
     QSqlQuery tableQuery(db);
@@ -274,34 +308,58 @@ void Converter::run()
         if (!dataQuery.exec()) continue;
 
         QSqlRecord rec = dataQuery.record();
-        QFile dbFile(QDir(nosqlDir).filePath(tableName + ".db.txt"));
-        
-        if (dbFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QTextStream out(&dbFile);
+        QFile txtFile(QDir(nosqlDir).filePath(tableName + ".db.txt"));
+        QFile binFile(QDir(nosqlDir).filePath(tableName + ".db"));
+
+        if (txtFile.open(QIODevice::WriteOnly | QIODevice::Text) && binFile.open(QIODevice::WriteOnly)) {
+            QTextStream out(&txtFile);
+            QDataStream binOut(&binFile);
+            binOut.setVersion(QDataStream::Qt_6_0);
+
             while (dataQuery.next()) {
                 QJsonObject valObj;
                 QString keyStr;
 
-                // Генерация ключа
+                // Формирование ключа
                 if (pkCols.size() > 1) {
-                    QStringList parts;
-                    for (const auto &pk : pkCols) parts << dataQuery.value(pk).toString();
-                    keyStr = parts.join("_");
-                } else if (!pkCols.isEmpty()) {
+                    QStringList keyParts;
+                    for (const auto &pk : pkCols) keyParts << dataQuery.value(pk).toString();
+                    keyStr = keyParts.join("_");
+                } else if (pkCols.size() == 1) {
                     keyStr = dataQuery.value(pkCols[0]).toString();
+                } else {
+                    keyStr = "row_" + QString::number(dataQuery.at());
                 }
 
-                // Генерация JSON
+                // Формирование значения (JSON)
                 for (int i = 0; i < rec.count(); ++i) {
-                    QString name = rec.fieldName(i);
-                    if (pkCols.size() == 1 && name == pkCols[0]) continue;
-                    valObj[name] = QJsonValue::fromVariant(dataQuery.value(i));
+                    QString colName = rec.fieldName(i);
+                    if (pkCols.size() == 1 && colName == pkCols[0]) continue;
+                    valObj[colName] = QJsonValue::fromVariant(dataQuery.value(i));
                 }
 
-                out << keyStr << " ||| " << QJsonDocument(valObj).toJson(QJsonDocument::Compact) << "\n";
+                QString jsonStr = QJsonDocument(valObj).toJson(QJsonDocument::Compact);
+                out << keyStr << " ||| " << jsonStr << "\n";
+                binOut << keyStr.toUtf8() << jsonStr.toUtf8();
             }
-            dbFile.close();
+            txtFile.close();
+            binFile.close();
+            qInfo() << "  OK:" << tableName;
         }
     }
+}
+
+QStringList Converter::getPrimaryKeyColumns(const QString &tableName)
+{
+    QStringList cols;
+    QSqlQuery query(QSqlDatabase::database());
+    query.prepare("SELECT kcu.column_name FROM information_schema.table_constraints tc "
+                  "JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name "
+                  "WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = ? ORDER BY kcu.ordinal_position");
+    query.addBindValue(tableName);
+    if (query.exec()) {
+        while (query.next()) cols << query.value(0).toString();
+    }
+    return cols;
 }
 ```
