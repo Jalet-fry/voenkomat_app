@@ -36,7 +36,7 @@ MainWindow::MainWindow(QWidget *parent)
     // ВАЖНО: Устанавливаем режим работы (HTTP или SQL) из конфига
     m_dbManager->setHttpMode(config.isHttpMode());
 
-    setWindowTitle(m_isClassicUI ? "ИС Военкомат (CUA)" : "ИС Военкомат (Modern UI)");
+    setWindowTitle(m_isClassicUI ? "ИС Военкомат [NoSQL Mode] (CUA)" : "ИС Военкомат [NoSQL Mode] (Modern UI)");
     if (m_isClassicUI) setFixedSize(950, 700); else setFixedSize(450, 720);
 
     setupUI();
@@ -126,12 +126,12 @@ void MainWindow::setupModernUI()
     QString btnBase = "QPushButton { background-color: #2f3640; color: #ffffff; border-radius: 6px; padding: 12px; font-weight: bold; } "
                       "QPushButton:hover { background-color: #353b48; }";
 
-    m_tablesBtn = new QPushButton("📜 Реестр таблиц", this);
-    m_queriesBtn = new QPushButton("🔍 Аналитика (SQL)", this);
-    m_exportBtn = new QPushButton("📤 Сохранить в JSON", this);
-    m_helpBtn = new QPushButton("ℹ️ Помощь (F1)", this);
-    m_switchModeBtn = new QPushButton("⚙️ Интерфейс CUA", this);
-    m_exitBtn = new QPushButton("Выход (Ctrl+E)", this);
+    m_tablesBtn = new QPushButton("📂 NoSQL Databases (Alt+D)", this);
+    m_queriesBtn = new QPushButton("🔍 NoSQL Analytics (Alt+Q)", this);
+    m_exportBtn = new QPushButton("📤 Export to JSON", this);
+    m_helpBtn = new QPushButton("ℹ️ Help & CUA Docs (F1)", this);
+    m_switchModeBtn = new QPushButton("⚙️ Classic CUA Interface", this);
+    m_exitBtn = new QPushButton("Exit (Ctrl+E)", this);
 
     m_tablesBtn->setStyleSheet(btnBase);
     m_queriesBtn->setStyleSheet(btnBase);
@@ -221,7 +221,7 @@ void MainWindow::setupClassicUI()
     fileMenu->addAction("Logout Admin", this, &MainWindow::logoutAdmin);
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", QKeySequence("Ctrl+E"), this, &MainWindow::exitApp);
-    m_tablesMenu = m_menuBar->addMenu("&Tables");
+    m_tablesMenu = m_menuBar->addMenu("&Databases");
     refreshTablesMenu();
 
     QMenu *opsMenu = m_menuBar->addMenu("&Operations");
@@ -280,7 +280,7 @@ void MainWindow::viewActiveTable() {
     bool canEdit = !isLookup || m_dbManager->isSuperuser();
     if (m_activeTableLabel) {
         bool isAdmin = m_dbManager->isSuperuser();
-        QString statusText = "Active Table: [ " + m_activeTable.toUpper() + " ]";
+        QString statusText = "Active NoSQL Store: [ " + m_activeTable.toUpper() + " ]";
 
         if (isAdmin) {
             statusText += " (ADMIN MODE)";
@@ -325,10 +325,20 @@ void MainWindow::applyFilter()
     if (m_filterColumnCombo && m_filterValueEdit && !m_filterValueEdit->text().isEmpty()) {
         QString val = m_filterValueEdit->text().trimmed();
         QString col = m_filterColumnCombo->currentText();
-        if (val.startsWith(">") || val.startsWith("<") || val.startsWith("="))
-            where = QString("%1 %2").arg(col).arg(val);
-        else
-            where = QString("%1::text ILIKE '%%2%'").arg(col).arg(val);
+
+        if (m_dbManager->isHttpMode()) {
+            // Для NoSQL (Python) отправляем простой формат
+            if (val.startsWith(">") || val.startsWith("<") || val.startsWith("="))
+                where = QString("%1 %2").arg(col).arg(val);
+            else
+                where = QString("%1 ILIKE %2").arg(col).arg(val);
+        } else {
+            // Для SQL (Postgres) оставляем как было
+            if (val.startsWith(">") || val.startsWith("<") || val.startsWith("="))
+                where = QString("%1 %2").arg(col).arg(val);
+            else
+                where = QString("%1::text ILIKE '%%2%'").arg(col).arg(val);
+        }
     }
 
     QJsonArray data;
@@ -371,6 +381,7 @@ void MainWindow::showHelp() {
         "<p>Программа построена по стандарту <b>Common User Access (CUA)</b>. Основное управление осуществляется клавиатурой.</p>"
         "<h3>1. Горячие клавиши (Hotkeys):</h3>"
         "<table border='1' cellpadding='5' style='border-collapse: collapse; width: 100%; border: 1px solid #2f3640;'>"
+        "<tr><td><b>Alt + D</b></td><td>Databases: Выбор хранилища данных</td></tr>"
         "<tr><td><b>Ctrl + A</b></td><td>Add: Добавить новую запись</td></tr>"
         "<tr><td><b>Ctrl + V</b></td><td>View: Обновить данные таблицы</td></tr>"
         "<tr><td><b>Ctrl + U</b></td><td>Update: Изменить выбранную запись</td></tr>"
@@ -699,7 +710,13 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
 }
 
 void MainWindow::onTableSelected(const QString &t) { m_activeTable = t; viewActiveTable(); }
-void MainWindow::refreshTablesMenu() { if (!m_tablesMenu) return; m_tablesMenu->clear(); foreach(const QString &t, m_dbManager->getTableList()) m_tablesMenu->addAction(t, [this, t](){ onTableSelected(t); }); }
+void MainWindow::refreshTablesMenu() {
+    if (!m_tablesMenu) return;
+    m_tablesMenu->setTitle(tr("&Databases")); // Принудительно ставим для ЛР4
+    m_tablesMenu->clear();
+    foreach(const QString &t, m_dbManager->getTableList())
+        m_tablesMenu->addAction(t, [this, t](){ onTableSelected(t); });
+}
 void MainWindow::openQueries() { if (!m_queriesWindow) m_queriesWindow = new QueriesWindow(m_dbManager); m_queriesWindow->show(); }
 void MainWindow::openQueriesWindow() { openQueries(); }
 void MainWindow::openTablesWindow() { if(!m_tablesWindow) m_tablesWindow = new TablesWindow(m_dbManager); m_tablesWindow->show(); }

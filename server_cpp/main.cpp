@@ -2,76 +2,71 @@
 #include <QCommandLineParser>
 #include <QDebug>
 #include <QDir>
-#include <QSqlDatabase>
 #include <iostream>
 #include "DatabaseManager.h"
 #include "RestServer.h"
 #include "Converter.h"
-#include "DataGenerator.h"
 
 int main(int argc, char *argv[])
 {
-    // Отключаем буферизацию для мгновенного вывода в консоль
+    // 1. Отключаем SSL-спам (для ЛР это лишний шум)
+    qputenv("QT_LOGGING_RULES", "qt.network.ssl.warning=false");
     setvbuf(stdout, NULL, _IONBF, 0);
 
     QCoreApplication a(argc, argv);
     a.setApplicationName("VoenkomatServer");
 
-    // --- БЛОК ПОИСКА ПУТЕЙ DLL ---
+    // --- УМНЫЙ ПОИСК ПУТЕЙ ---
     QString appDir = QCoreApplication::applicationDirPath();
-    QString projectRoot = QDir(appDir).absoluteFilePath("../../../..");
-    projectRoot = QDir::cleanPath(projectRoot);
-    QString dllPath = projectRoot + "/dll";
+    QString nosqlPath;
+    QDir searchDir(appDir);
 
-    if (QDir(dllPath).exists()) {
-        QString currentPath = QString::fromLocal8Bit(qgetenv("PATH"));
-        currentPath = dllPath + ";" + currentPath;
-        qputenv("PATH", currentPath.toLocal8Bit());
+    // Ищем папку nosql_db_cpp, поднимаясь вверх от EXE (до 6 уровней)
+    for (int i = 0; i < 6; ++i) {
+        QString candidate = searchDir.absoluteFilePath("nosql_db_cpp");
+        if (QDir(candidate).exists() && !QDir(candidate).entryList({"*.db"}).isEmpty()) {
+            nosqlPath = candidate;
+            break;
+        }
+        if (!searchDir.cdUp()) break;
     }
 
-    // --- ПАРСЕР КОМАНДНОЙ СТРОКИ ---
+    // --- ПАРСЕР АРГУМЕНТОВ ---
     QCommandLineParser parser;
-    parser.setApplicationDescription("ИС Военкомат: Сервер + NoSQL Конвертер + Генератор");
     parser.addHelpOption();
-
-    QCommandLineOption convertOption("convert", "Запустить NoSQL конвертер (ЛР 3) и выйти.");
-    QCommandLineOption generateOption("generate", "Запустить генератор тестовых данных и выйти.");
-
+    QCommandLineOption convertOption("convert", "Конвертировать SQL -> NoSQL");
     parser.addOption(convertOption);
-    parser.addOption(generateOption);
     parser.process(a);
 
-    // --- ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ ---
-    if (!DatabaseManager::instance().connectToDatabase()) {
-        std::cout << "CRITICAL: Database connection failed! Check config.ini\n";
-        return -1;
-    }
-
-    // 1. Режим конвертера (аналог converter.py)
+    // --- ЗАПУСК В РЕЖИМЕ КОНВЕРТЕРА ---
     if (parser.isSet(convertOption)) {
-        std::cout << "\n>>> STARTING NOSQL CONVERSION (LAB 3) <<<\n";
+        std::cout << ">>> CONVERTER MODE <<<" << std::endl;
+        if (!DatabaseManager::instance().connectToDatabase()) {
+            std::cerr << "ERROR: No connection to PostgreSQL!" << std::endl;
+            return -1;
+        }
         Converter conv;
         conv.run();
-        std::cout << ">>> CONVERSION FINISHED <<<\n";
         return 0;
     }
 
-    // 2. Режим генератора (аналог generate_data.py)
-    if (parser.isSet(generateOption)) {
-        std::cout << "\n>>> STARTING DATA GENERATION <<<\n";
-        DataGenerator gen;
-        gen.run();
-        std::cout << ">>> GENERATION FINISHED <<<\n";
-        return 0;
+    // --- ЗАПУСК СЕРВЕРА ---
+    if (!nosqlPath.isEmpty()) {
+        std::cout << ">>> SERVER MODE: NoSQL (BerkeleyDB Style) <<<" << std::endl;
+        std::cout << "[INFO] Database: " << QDir::toNativeSeparators(nosqlPath).toStdString() << std::endl;
+        DatabaseManager::instance().setNoSqlMode(true);
+        DatabaseManager::instance().setNoSqlPath(nosqlPath);
+    } else {
+        std::cout << ">>> SERVER MODE: Classic SQL (PostgreSQL) <<<" << std::endl;
+        std::cout << "[WARN] NoSQL files not found. Using Postgres." << std::endl;
+        DatabaseManager::instance().setNoSqlMode(false);
+        DatabaseManager::instance().connectToDatabase();
     }
 
-    // 3. Режим HTTP сервера (ЛР 1)
-    std::cout << "\n>>> STARTING VOENKOMAT REST SERVER (PORT 8000) <<<\n";
     RestServer server;
-    if (!server.start(8000)) {
-        std::cout << "ERROR: Failed to start server\n";
-        return -1;
+    if (server.start(8000)) {
+        std::cout << "Server started on port 8000" << std::endl;
+        return a.exec();
     }
-
-    return a.exec();
+    return -1;
 }

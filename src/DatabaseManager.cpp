@@ -258,8 +258,8 @@ QList<DatabaseManager::ForeignKeyInfo> DatabaseManager::getForeignKeyInfo(const 
             QJsonObject obj = arr[i].toObject();
             ForeignKeyInfo fi;
             fi.columnName = obj["column"].toString();
-            fi.referencedTable = obj["referenced_table"].toString();
-            fi.referencedColumn = obj["referenced_column"].toString();
+            fi.referencedTable = obj["ref_table"].toString();
+            fi.referencedColumn = obj["ref_column"].toString();
             res << fi;
         }
         return res;

@@ -14,16 +14,12 @@ TablesWindow::TablesWindow(DatabaseManager *dbManager, QWidget *parent)
     : QWidget(parent)
     , m_dbManager(dbManager)
 {
-    setWindowTitle("Таблицы");
+    setWindowTitle("Базы данных NoSQL");
     setMinimumSize(450, 600);
     
     setupUI();
     setupStyles();
     refreshTables();
-}
-
-TablesWindow::~TablesWindow()
-{
 }
 
 void TablesWindow::setupUI()
@@ -32,7 +28,7 @@ void TablesWindow::setupUI()
     m_layout->setSpacing(15);
     m_layout->setContentsMargins(25, 25, 25, 25);
 
-    QLabel *title = new QLabel("Таблицы базы данных", this);
+    QLabel *title = new QLabel("Доступные NoSQL базы (BerkeleyDB)", this);
     title->setAlignment(Qt::AlignCenter);
     title->setStyleSheet("font-size: 22px; color: #2c3e50; font-weight: bold; margin-bottom: 10px;");
     m_layout->addWidget(title);
@@ -203,4 +199,8 @@ void TablesWindow::editTableStructure(const QString &tableName)
 void TablesWindow::goBack()
 {
     hide();
+}
+
+TablesWindow::~TablesWindow()
+{
 }

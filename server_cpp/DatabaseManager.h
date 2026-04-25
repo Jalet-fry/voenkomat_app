@@ -19,6 +19,12 @@ public:
     ~DatabaseManager();
     bool connectToDatabase();
 
+    void setNoSqlMode(bool enabled) { m_isNoSqlMode = enabled; }
+    bool isNoSqlMode() const { return m_isNoSqlMode; }
+
+    void setNoSqlPath(const QString &path) { m_noSqlPath = path; }
+    QString noSqlPath() const { return m_noSqlPath; }
+
     QJsonArray executeSelect(const QString &queryStr, const QVariantList &params = {});
     QJsonObject executeModify(const QString &queryStr, const QVariantList &params = {});
 
@@ -28,6 +34,8 @@ private:
     explicit DatabaseManager(QObject *parent = nullptr);
     QString m_host, m_dbName, m_user, m_pass;
     int m_port;
+    bool m_isNoSqlMode = false;
+    QString m_noSqlPath;
     QSqlDatabase db();
 };
 

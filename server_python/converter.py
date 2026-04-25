@@ -1,12 +1,10 @@
+import sqlite3
 import json
 import os
-import dbm
 from datetime import datetime, date, time
 from decimal import Decimal
 
-# TODO: [LAB3] Реализация NoSQL конвертера (Postgres -> BerkeleyDB/dbm)
-# Соответствует требованиям спецификации: Ключ=PK, Значение=JSON.
-
+# Импортируем вашу функцию для работы с Postgres
 try:
     from database import execute_query
 except ImportError:
@@ -22,67 +20,67 @@ class NoSQLJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 def convert():
-    print("--- ЛАБОРАТОРНАЯ РАБОТА №3: КОНВЕРТАЦИЯ В NoSQL ---")
+    print("\n--- КОНВЕРТАЦИЯ В NoSQL (Один файл .db на таблицу) ---")
     
-    # [ШАГ 1] Подключение к БД осуществляется внутри execute_query
-    nosql_dir = "nosql_db"
+    nosql_dir = os.path.join(os.path.dirname(__file__), "..", "nosql_db_python")
     if not os.path.exists(nosql_dir):
         os.makedirs(nosql_dir)
 
-    # [ШАГ 2] Получение информации о таблицах (названия, столбцы, данные)
-    tables_res = execute_query("""
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-    """)
-    tables = [row['table_name'] for row in tables_res]
+    # 1. Получение списка таблиц из Postgres
+    try:
+        tables_res = execute_query("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        """)
+        tables = [row['table_name'] for row in tables_res]
+    except Exception as e:
+        print(f"Ошибка подключения к Postgres: {e}")
+        return
 
     for table_name in tables:
-        print(f"Конвертация {table_name}...")
+        print(f"Обработка {table_name}...")
         
-        # Получаем структуру PK для формирования ключа
-        pk_query = f"""
-            SELECT kcu.column_name 
-            FROM information_schema.table_constraints tc 
-            JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name 
-            WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{table_name}'
-            ORDER BY kcu.ordinal_position
-        """
-        pk_cols = [row['column_name'] for row in pk_res] if (pk_res := execute_query(pk_query)) else []
-
-        # Получаем содержимое таблицы
-        data = execute_query(f"SELECT * FROM public.{table_name}")
-        db_path = os.path.join(nosql_dir, f"{table_name}.db")
-        
-        # [ШАГ 3] Создание баз данных BerkeleyDB (dbm) и их заполнение
+        # Получаем структуру и данные
         try:
-            with dbm.open(db_path, 'n') as db:
-                for row in data:
-                    # ФОРМИРОВАНИЕ КЛЮЧА (согласно Таблице 2.1 ТЗ)
-                    if len(pk_cols) > 1:
-                        # Для связей M2M ключ вида {id1}_{id2}
-                        key_str = "_".join([str(row[c]) for c in pk_cols])
-                    elif len(pk_cols) == 1:
-                        # Для обычных таблиц ключ - это ID
-                        key_str = str(row[pk_cols[0]])
-                    else:
-                        key_str = str(list(row.values())[0])
+            # Выясняем PK
+            pk_res = execute_query(f"""
+                SELECT kcu.column_name 
+                FROM information_schema.table_constraints tc 
+                JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name 
+                WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{table_name}'
+            """)
+            pk_cols = [row['column_name'] for row in pk_res] if pk_res else []
+            
+            data = execute_query(f'SELECT * FROM public."{table_name}"')
+            
+            # Файл базы данных (теперь строго один .db)
+            db_path = os.path.join(nosql_dir, f"{table_name}.db")
+            if os.path.exists(db_path): os.remove(db_path) # Очищаем старый
 
-                    # ФОРМИРОВАНИЕ ЗНАЧЕНИЯ (JSON)
-                    # Если PK один, исключаем его из JSON (как в примере students: id -> {...})
-                    if len(pk_cols) == 1:
-                        val_dict = {k: v for k, v in row.items() if k not in pk_cols}
-                    else:
-                        val_dict = row
+            # Подключаемся через sqlite3 (имитируем Berkeley DB SQL)
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)")
 
-                    db[key_str] = json.dumps(val_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
+            for row in data:
+                # Формируем ключ
+                key_str = "_".join([str(row[c]) for c in pk_cols]) if pk_cols else str(list(row.values())[0])
                 
-                print(f"  OK: {table_name}.db создана.")
+                # ФОРМИРОВАНИЕ ЗНАЧЕНИЯ (JSON)
+                # Теперь сохраняем ВСЕ колонки в JSON, чтобы в UI ничего не пропадало
+                val_dict = {k: v for k, v in row.items()}
+                json_val = json.dumps(val_dict, ensure_ascii=False, cls=NoSQLJSONEncoder)
+                
+                conn.execute("INSERT INTO kv (key, value) VALUES (?, ?)", (key_str, json_val))
+            
+            conn.commit()
+            conn.close()
+            print(f"  OK: Создан файл {table_name}.db")
+            
         except Exception as e:
-            print(f"  Ошибка: {e}")
+            print(f"  Ошибка в {table_name}: {e}")
 
-    # [ШАГ 4] Закрытие соединений происходит автоматически при выходе из with и функций
-    print("\n--- КОНВЕРТАЦИЯ ЗАВЕРШЕНА (TODO: [LAB3] OK) ---")
+    print("\n--- КОНВЕРТАЦИЯ ЗАВЕРШЕНА. В папке nosql_db_python теперь только .db файлы ---")
 
 if __name__ == "__main__":
     convert()

@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QSqlDatabase>
 
 class Converter : public QObject
 {
@@ -12,7 +13,7 @@ public:
     void run();
 
 private:
-    QStringList getPrimaryKeyColumns(const QString &tableName);
+    QStringList getPrimaryKeyColumns(const QString &tableName, QSqlDatabase &db);
 };
 
 #endif // CONVERTER_H
