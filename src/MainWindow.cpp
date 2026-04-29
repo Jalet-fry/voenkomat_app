@@ -311,10 +311,27 @@ void MainWindow::viewActiveTable() {
         }
     }
     QStringList cols = m_dbManager->getColumnList(m_activeTable);
-    if (m_filterColumnCombo) { m_filterColumnCombo->clear(); m_filterColumnCombo->addItems(cols); }
+    QString pk = m_dbManager->getPrimaryKeyColumn(m_activeTable);
+
+    // В комбобокс фильтрации добавляем ВСЕ колонки (включая ID и PK), как просил пользователь
+    if (m_filterColumnCombo) {
+        m_filterColumnCombo->clear();
+        m_filterColumnCombo->addItems(cols);
+    }
+
     if (m_mainTable) {
         m_mainTable->setColumnCount(cols.size());
         m_mainTable->setHorizontalHeaderLabels(cols);
+
+        // Прячем ТОЛЬКО техническое поле "id", если оно дублирует основной ключ
+        for(int i = 0; i < cols.size(); ++i) {
+            if (cols[i].toLower() == "id" && pk.toLower() != "id") {
+                m_mainTable->setColumnHidden(i, true);
+            } else {
+                m_mainTable->setColumnHidden(i, false);
+            }
+        }
+
         applyFilter();
     }
 }
@@ -367,7 +384,8 @@ void MainWindow::applyFilter()
     for(int i = 0; i < data.size(); ++i) {
         QJsonObject o = data[i].toObject();
         for(int j = 0; j < cols.size(); ++j) {
-            QTableWidgetItem *item = new QTableWidgetItem(o[cols[j]].toVariant().toString());
+            QString val = o[cols[j]].toVariant().toString();
+            QTableWidgetItem *item = new QTableWidgetItem(val);
             item->setForeground(QBrush(Qt::black));
             m_mainTable->setItem(i, j, item);
         }

@@ -12,6 +12,9 @@
 #include <QJsonArray>
 #include <QHBoxLayout>
 
+#include <QIntValidator>
+#include <QDoubleValidator>
+
 RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent, const QString &recordId)
     : QDialog(parent)
     , m_dbManager(dbManager)
@@ -96,6 +99,11 @@ void RecordDialog::setupUI()
 
     int row = 0;
     foreach (const QString &col, m_columns) {
+        // УБИРАЕМ ТОЛЬКО ТЕХНИЧЕСКИЙ "id", если он дублирует PK
+        if (col.toLower() == "id" && pk.toLower() != "id") {
+            continue;
+        }
+
         QLabel *label = new QLabel(getDisplayName(col) + ":", this);
 
         if (fkMap.contains(col)) {
@@ -143,7 +151,23 @@ void RecordDialog::setupUI()
             form->addWidget(container, row, 1);
         } else {
             QLineEdit *field = new QLineEdit(this);
-            if (col.toLower().contains("date")) field->setInputMask("0000-00-00;_");
+
+            // УТОЧНЕННАЯ ВАЛИДАЦИЯ: Блокируем буквы только там, где это 100% число
+            QString lowCol = col.toLower();
+            if (lowCol.contains("date")) {
+                field->setInputMask("0000-00-00;_");
+            } else if (lowCol == "years_of_service" || lowCol == "stazh_raboty" || lowCol == "category_index") {
+                // Стаж и индексы - строго цифры
+                QIntValidator *validator = new QIntValidator(0, 100, this);
+                field->setValidator(validator);
+                field->setPlaceholderText("0-100");
+            } else if (lowCol.endsWith("_id") || lowCol == "id") {
+                // ID - тоже только цифры
+                QIntValidator *validator = new QIntValidator(0, 2147483647, this);
+                field->setValidator(validator);
+            }
+            // Поля типа "phone_number", "passport_number", "address" ОСТАЮТСЯ СВОБОДНЫМИ
+            // В них можно вводить и +, и пробелы, и буквы.
 
             // ЖЕСТКАЯ БЛОКИРОВКА ID: Чтобы пользователь не мог менять его вручную (ЛР требование)
             if (col.compare(pk, Qt::CaseInsensitive) == 0 || col.toLower() == "id") {
@@ -171,9 +195,29 @@ void RecordDialog::saveRecord()
     QJsonObject json;
     QString pk = m_dbManager->getPrimaryKeyColumn(m_tableName);
 
+    // Дополнительная проверка перед сохранением
     foreach (const QString &col, m_columns) {
-        // При добавлении новой записи не шлём автоинкрементный ID
-        if (m_recordId.isEmpty() && col.compare(pk, Qt::CaseInsensitive) == 0) continue;
+        if (!m_fieldWidgets.contains(col)) continue;
+
+        if (QLineEdit *edit = qobject_cast<QLineEdit*>(m_fieldWidgets[col])) {
+            QString val = edit->text().trimmed();
+            QString lowCol = col.toLower();
+
+            // Если поле должно быть числовым, а там пусто (и это не PK) - можно выдать предупреждение
+            if (edit->validator() && val.isEmpty() && !edit->isReadOnly()) {
+                QMessageBox::warning(this, "Валидация", QString("Поле '%1' должно содержать число!").arg(getDisplayName(col)));
+                edit->setFocus();
+                return;
+            }
+        }
+    }
+
+    foreach (const QString &col, m_columns) {
+        // ID берем из m_recordId или если пусто - ставим "АВТО-ID"
+        if (col.compare(pk, Qt::CaseInsensitive) == 0 || col.toLower() == "id") {
+            json[col] = !m_recordId.isEmpty() ? m_recordId : "АВТО-ID";
+            continue;
+        }
 
         if (QComboBox *combo = qobject_cast<QComboBox*>(m_fieldWidgets[col])) {
             json[col] = combo->currentData().toString();

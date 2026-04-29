@@ -158,21 +158,28 @@ bool NoSQLManager::insertData(const QString &tableName, QJsonObject &data) {
     QString pk = getPrimaryKey(tableName);
     QString id;
 
+    // Ищем ID в данных (сначала PK, потом универсальный "id")
     if (data.contains(pk)) id = data.value(pk).toVariant().toString();
-    else if (data.contains("id")) id = data.value("id").toVariant().toString();
+    if (id.isEmpty() && data.contains("id")) id = data.value("id").toVariant().toString();
 
-    // Автогенерация ID если пусто
-    if (id.isEmpty()) {
+    // Если ID все еще пустой или равен "АВТО-ID" (строка из клиента), генерируем новый
+    if (id.isEmpty() || id == "АВТО-ID") {
         qint64 maxId = 0;
         QSqlQuery q(db);
+        // В NoSQL режиме мы храним ключи в колонке key
         if (q.exec("SELECT key FROM kv")) {
             while (q.next()) {
+                QString keyStr = q.value(0).toString();
+                // Если ключ составной (например, 1_1), берем первую часть или просто пропускаем
+                if (keyStr.contains("_")) continue;
+
                 bool isNum;
-                qint64 current = q.value(0).toLongLong(&isNum);
+                qint64 current = keyStr.toLongLong(&isNum);
                 if (isNum && current > maxId) maxId = current;
             }
         }
         id = QString::number(maxId + 1);
+        qInfo() << "[NoSQL] Generated new ID for" << tableName << ":" << id;
         data[pk] = id;
         data["id"] = id;
     }
@@ -231,8 +238,16 @@ bool NoSQLManager::updateData(const QString &tableName, const QString &oldId, QJ
         QString newKey = it.key();
         QJsonValue newVal = it.value();
 
-        // Пропускаем обновление ID внутри JSON, если он пустой или совпадает с текущим PK
-        if (newKey.compare(pk, Qt::CaseInsensitive) == 0 || newKey.compare("id", Qt::CaseInsensitive) == 0) {
+        // Полностью исключаем дублирование технических полей внутри JSON
+        if (newKey.compare("id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("conscript_id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("commissioner_id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("ticket_id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("event_id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("card_id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("category_id", Qt::CaseInsensitive) == 0 ||
+            newKey.compare("certification_id", Qt::CaseInsensitive) == 0)
+        {
             continue;
         }
 
