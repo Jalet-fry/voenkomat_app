@@ -146,8 +146,19 @@ async def add_rec(table_name: str, data: Dict[str, Any], x_auth_token: Optional[
         raise HTTPException(status_code=403, detail="Forbidden")
     
     pk_col = TABLE_PK_MAP.get(table_name, "id")
-    # Генерируем новый ID если нет
-    new_id = data.get(pk_col) or str(int(datetime.now().timestamp()))
+    # Генерируем новый последовательный ID если нет
+    if not data.get(pk_col):
+        existing_data = db_manager.get_all_data(table_name)
+        ids = []
+        for row in existing_data:
+            try:
+                # В NoSQL __pk хранится как строка, пробуем привести к int
+                ids.append(int(row.get('__pk', 0)))
+            except (ValueError, TypeError):
+                pass
+        new_id = str(max(ids) + 1 if ids else 1)
+    else:
+        new_id = str(data.get(pk_col))
     
     payload = {k: v for k, v in data.items() if k != pk_col}
     db_manager.insert_record(table_name, new_id, payload)

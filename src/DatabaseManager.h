@@ -51,8 +51,8 @@ public:
     // Возвращает объект созданной записи или пустой объект при ошибке
     QJsonObject addRecordHttp(const QString &tableName, const QJsonObject &data);
 
-    bool updateRecordHttp(const QString &tableName, int recordId, const QJsonObject &data);
-    bool deleteRecordHttp(const QString &tableName, int recordId);
+    bool updateRecordHttp(const QString &tableName, const QString &recordId, const QJsonObject &data);
+    bool deleteRecordHttp(const QString &tableName, const QString &recordId);
     bool createBackupHttp();
 
     QStringList getTableList();

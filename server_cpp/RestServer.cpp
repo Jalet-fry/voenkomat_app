@@ -128,9 +128,21 @@ void RestServer::setupRoutes() {
     });
 
     // 5. Foreign Keys (Expected by client)
-    m_server.route("/api/foreign-keys/<arg>", [this](const QString &tableName) {
+    m_server.route("/api/foreign-keys/<arg>", [](const QString &) {
         QJsonObject res;
         res["foreign_keys"] = QJsonArray(); // NoSQL обычно не поддерживает FK на уровне БД
+        return makeResponse(res);
+    });
+
+    // --- SPECIAL QUERIES (LAB 5 & 6) ---
+    m_server.route("/api/special/list", [this]() {
+        return makeResponse(NoSQLManager::instance().getSpecialQueriesInfo());
+    });
+
+    m_server.route("/api/special/<arg>/<arg>", [this](const QString &lab, const QString &num) {
+        QJsonArray data = NoSQLManager::instance().executeSpecialQuery(lab, num);
+        QJsonObject res;
+        res["data"] = data;
         return makeResponse(res);
     });
 
@@ -152,6 +164,63 @@ void RestServer::setupRoutes() {
 
                        QJsonObject res;
                        res["data"] = data; // Оборачиваем в "data", как хочет клиент
+                       return makeResponse(res);
+                   }
+    );
+
+    // 6a. Insert Data (POST)
+    m_server.route("/api/<arg>", QHttpServerRequest::Method::Post,
+                   [this](const QString &tableName, const QHttpServerRequest &req) {
+                       qInfo() << "[HTTP] Insert data into:" << tableName;
+                       QJsonDocument doc = QJsonDocument::fromJson(req.body());
+                       if (doc.isNull()) {
+                           return makeResponse(QByteArray("Error: Invalid JSON"));
+                       }
+                       QJsonObject body = doc.object();
+                       bool ok = false;
+                       if (DatabaseManager::instance().isNoSqlMode()) {
+                           ok = NoSQLManager::instance().insertData(tableName, body);
+                       } else {
+                           // ... SQL implementation ...
+                           QStringList keys = body.keys();
+                           QString sql = QString("INSERT INTO %1 (%2) VALUES (%3)")
+                                             .arg(tableName, keys.join(","), QString("?,").repeated(keys.size()).chopped(1));
+                           QVariantList params;
+                           for(const QString &k : keys) params << body[k].toVariant();
+                           QJsonObject res = DatabaseManager::instance().executeModify(sql, params);
+                           ok = (res["status"].toString() == "success");
+                       }
+                       QJsonObject res;
+                       if (ok) {
+                           res["status"] = "success";
+                           res["data"] = body; // Теперь содержит ID
+                       } else {
+                           res["status"] = "error";
+                           res["message"] = "Insert failed";
+                       }
+                       return makeResponse(res);
+                   }
+    );
+
+    // 6b. Update Data (PUT)
+    m_server.route("/api/<arg>/<arg>", QHttpServerRequest::Method::Put,
+                   [this](const QString &tableName, const QString &id, const QHttpServerRequest &req) {
+                       qInfo() << "[HTTP] Update data in:" << tableName << "ID:" << id;
+                       QJsonObject body = QJsonDocument::fromJson(req.body()).object();
+                       // Мы передаем body по ссылке, NoSQLManager наполнит его недостающими полями из БД
+                       bool ok = false;
+                       if (DatabaseManager::instance().isNoSqlMode()) {
+                           ok = NoSQLManager::instance().updateData(tableName, id, body);
+                       }
+
+                       QJsonObject res;
+                       if (ok) {
+                           res["status"] = "success";
+                           res["data"] = body; // Теперь тут ПОЛНЫЙ объект
+                       } else {
+                           res["status"] = "error";
+                           res["message"] = "Update failed (record might not exist)";
+                       }
                        return makeResponse(res);
                    }
     );
@@ -190,7 +259,14 @@ void RestServer::setupRoutes() {
                        if (DatabaseManager::instance().isNoSqlMode()) {
                            ok = NoSQLManager::instance().deleteData(tableName, id);
                        }
-                       return makeResponse(ok ? QByteArray("OK") : QByteArray("Error"));
+
+                       QJsonObject res;
+                       if (ok) {
+                           res["status"] = "success";
+                       } else {
+                           res["status"] = "error";
+                       }
+                       return makeResponse(res);
                    }
     );
 }

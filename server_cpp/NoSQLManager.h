@@ -8,6 +8,8 @@
 #include <QStringList>
 #include <QVariant>
 
+#include <QSqlDatabase>
+
 class NoSQLManager : public QObject
 {
     Q_OBJECT
@@ -16,9 +18,13 @@ public:
 
     // Основные операции
     QJsonArray getData(const QString &tableName, const QString &filterStr = "", int limit = 0);
-    bool insertData(const QString &tableName, const QJsonObject &data);
-    bool updateData(const QString &tableName, const QString &id, const QJsonObject &data);
+    bool insertData(const QString &tableName, QJsonObject &data);
+    bool updateData(const QString &tableName, const QString &id, QJsonObject &data);
     bool deleteData(const QString &tableName, const QString &id);
+
+    // Специальные запросы (Лаб 5 и 6)
+    QJsonArray executeSpecialQuery(const QString &lab, const QString &queryNumber);
+    QJsonObject getSpecialQueriesInfo();
 
     // Метаданные
     QString getPrimaryKey(const QString &tableName);
@@ -27,9 +33,7 @@ public:
 
 private:
     explicit NoSQLManager(QObject *parent = nullptr);
-    QString getDbPath(const QString &tableName);
-    bool applyFilter(const QJsonObject &obj, const QString &filterStr);
-    bool compare(const QVariant &actual, const QString &op, const QString &target);
+    QSqlDatabase getDatabase(const QString &tableName);
 };
 
 #endif // NOSQLMANAGER_H

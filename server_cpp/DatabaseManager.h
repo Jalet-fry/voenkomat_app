@@ -25,6 +25,8 @@ public:
     void setNoSqlPath(const QString &path) { m_noSqlPath = path; }
     QString noSqlPath() const { return m_noSqlPath; }
 
+    QString projectRoot() const;
+
     QJsonArray executeSelect(const QString &queryStr, const QVariantList &params = {});
     QJsonObject executeModify(const QString &queryStr, const QVariantList &params = {});
 

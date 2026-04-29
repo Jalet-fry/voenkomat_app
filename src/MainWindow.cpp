@@ -221,7 +221,9 @@ void MainWindow::setupClassicUI()
     fileMenu->addAction("Logout Admin", this, &MainWindow::logoutAdmin);
     fileMenu->addSeparator();
     fileMenu->addAction("Exit", QKeySequence("Ctrl+E"), this, &MainWindow::exitApp);
-    m_tablesMenu = m_menuBar->addMenu("&Databases");
+
+    // ЛАБ 4: В режиме NoSQL меню должно называться Databases (Alt+D)
+    m_tablesMenu = m_menuBar->addMenu(m_dbManager->isHttpMode() ? "&Databases" : "&Tables");
     refreshTablesMenu();
 
     QMenu *opsMenu = m_menuBar->addMenu("&Operations");
@@ -418,27 +420,56 @@ void MainWindow::addRecord() {
 void MainWindow::updateRecord() {
     if (!m_mainTable) return;
     int r = m_mainTable->currentRow(); if(r < 0) return;
-    int id = m_mainTable->item(r, 0)->text().toInt();
+    QString id = m_mainTable->item(r, 0)->text();
     RecordDialog d(m_dbManager, m_activeTable, this, id);
     if(d.exec()==QDialog::Accepted) applyFilter();
 }
 
 void MainWindow::deleteRecord() {
+    QString pk = m_dbManager->getPrimaryKeyColumn(m_activeTable);
+    QStringList items;
+
+    // Performance: Use existing table data instead of full fetch
+    if (m_mainTable) {
+        for (int i = 0; i < m_mainTable->rowCount(); ++i) {
+            QString id = m_mainTable->item(i, 0)->text();
+            QString desc = id;
+            // Try to find descriptive columns (FIO, etc.) in the table headers
+            for (int j = 1; j < m_mainTable->columnCount(); ++j) {
+                QString header = m_mainTable->horizontalHeaderItem(j)->text().toLower();
+                if (header.contains("fio") || header.contains("имя") || header.contains("name") || header.contains("полное")) {
+                    desc += " - " + m_mainTable->item(i, j)->text();
+                    break;
+                }
+            }
+            items << desc;
+        }
+    }
+
+    if (items.isEmpty()) {
+        QMessageBox::warning(this, "Удаление", "Таблица пуста или данные не загружены!");
+        return;
+    }
+
     bool ok;
-    int id = QInputDialog::getInt(this, "Удаление", "Введите ID записи:", 1, 1, 1000000, 1, &ok);
-    if (ok) {
+    // UI Improvement: Make editable to allow typing OR selecting with arrows
+    QString selected = QInputDialog::getItem(this, "Удаление", "Введите ID или выберите из списка:", items, 0, true, &ok);
+
+    if (ok && !selected.isEmpty()) {
+        QString id = selected.section(" - ", 0, 0).trimmed();
         bool success = false;
         if (m_dbManager->isHttpMode()) {
             success = m_dbManager->deleteRecordHttp(m_activeTable, id);
         } else {
-            QString sql = QString("DELETE FROM public.%1 WHERE %2 = %3")
+            QString sql = QString("DELETE FROM public.%1 WHERE %2 = '%3'")
                 .arg(m_activeTable)
-                .arg(m_dbManager->getPrimaryKeyColumn(m_activeTable))
+                .arg(pk)
                 .arg(id);
             m_dbManager->executeQuery(sql, &success);
         }
 
         if (success) applyFilter();
+        else QMessageBox::critical(this, "Ошибка", "Не удалось удалить запись: " + m_dbManager->lastError());
     }
 }
 
@@ -712,7 +743,8 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
 void MainWindow::onTableSelected(const QString &t) { m_activeTable = t; viewActiveTable(); }
 void MainWindow::refreshTablesMenu() {
     if (!m_tablesMenu) return;
-    m_tablesMenu->setTitle(tr("&Databases")); // Принудительно ставим для ЛР4
+    // ЛАБ 4: Обновляем заголовок в зависимости от режима
+    m_tablesMenu->setTitle(m_dbManager->isHttpMode() ? "&Databases" : "&Tables");
     m_tablesMenu->clear();
     foreach(const QString &t, m_dbManager->getTableList())
         m_tablesMenu->addAction(t, [this, t](){ onTableSelected(t); });

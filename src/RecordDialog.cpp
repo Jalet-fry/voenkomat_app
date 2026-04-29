@@ -12,7 +12,7 @@
 #include <QJsonArray>
 #include <QHBoxLayout>
 
-RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent, int recordId)
+RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent, const QString &recordId)
     : QDialog(parent)
     , m_dbManager(dbManager)
     , m_tableName(tableName)
@@ -21,7 +21,7 @@ RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName,
     ConfigManager config("config.ini");
     m_isClassicUI = config.isClassicUI();
 
-    setWindowTitle(recordId < 0 ? "Добавление записи" : "Редактирование записи");
+    setWindowTitle(recordId.isEmpty() ? "Добавление записи" : "Редактирование записи");
     setMinimumSize(600, 650);
 
     m_columns = m_dbManager->getColumnList(tableName);
@@ -75,7 +75,7 @@ RecordDialog::RecordDialog(DatabaseManager *dbManager, const QString &tableName,
     setupUI();
     setupStyles();
 
-    if (m_recordId >= 0) {
+    if (!m_recordId.isEmpty()) {
         loadRecordData();
     }
     setupAutocomplete();
@@ -144,11 +144,13 @@ void RecordDialog::setupUI()
         } else {
             QLineEdit *field = new QLineEdit(this);
             if (col.toLower().contains("date")) field->setInputMask("0000-00-00;_");
-            if (col == pk) {
+
+            // ЖЕСТКАЯ БЛОКИРОВКА ID: Чтобы пользователь не мог менять его вручную (ЛР требование)
+            if (col.compare(pk, Qt::CaseInsensitive) == 0 || col.toLower() == "id") {
                 field->setReadOnly(true);
                 field->setEnabled(false);
-                field->setText(m_recordId >= 0 ? QString::number(m_recordId) : "АВТО-ID");
-                field->setStyleSheet("background-color: #f0f0f0; border: 1px solid #ccc;");
+                field->setText(!m_recordId.isEmpty() ? m_recordId : "АВТО-ID");
+                field->setStyleSheet("background-color: #e0e0e0; border: 1px solid #999; color: #555; font-weight: bold;");
             }
             m_fieldWidgets[col] = field;
             form->addWidget(label, row, 0);
@@ -170,39 +172,95 @@ void RecordDialog::saveRecord()
     QString pk = m_dbManager->getPrimaryKeyColumn(m_tableName);
 
     foreach (const QString &col, m_columns) {
-        if (m_recordId < 0 && col == pk) continue;
+        // При добавлении новой записи не шлём автоинкрементный ID
+        if (m_recordId.isEmpty() && col.compare(pk, Qt::CaseInsensitive) == 0) continue;
 
         if (QComboBox *combo = qobject_cast<QComboBox*>(m_fieldWidgets[col])) {
-            // ТЕПЕРЬ МЫ ОТПРАВЛЯЕМ ПУСТУЮ СТРОКУ, ЕСЛИ НИЧЕГО НЕ ВЫБРАНО
-            // Сервер превратит её в NULL в базе
             json[col] = combo->currentData().toString();
         } else if (QLineEdit *edit = qobject_cast<QLineEdit*>(m_fieldWidgets[col])) {
             QString val = edit->text().trimmed();
+            // Не отправляем пустые даты
             if (col.toLower().contains("date") && (val == "0000-00-00" || val.isEmpty())) continue;
-            json[col] = val;
+
+            // Если мы редактируем, и это поле PK - обязательно включаем его в JSON
+            if (!m_recordId.isEmpty() && col.compare(pk, Qt::CaseInsensitive) == 0) {
+                json[col] = m_recordId;
+            } else {
+                json[col] = val;
+            }
         }
     }
 
-    bool ok = (m_recordId < 0) ? !m_dbManager->addRecordHttp(m_tableName, json).isEmpty()
+    bool ok = (m_recordId.isEmpty()) ? !m_dbManager->addRecordHttp(m_tableName, json).isEmpty()
                               : m_dbManager->updateRecordHttp(m_tableName, m_recordId, json);
 
     if (ok) accept();
-    else QMessageBox::critical(this, "Ошибка", "Не удалось сохранить: " + m_dbManager->lastError());
+    else {
+        QString err = m_dbManager->lastError();
+        if (err.isEmpty()) err = "Сервер не ответил или вернул ошибку.";
+        QMessageBox::critical(this, "Ошибка сохранения", err);
+    }
 }
 
 RecordDialog::~RecordDialog() {}
 void RecordDialog::setupAutocomplete() { /* ... аналогично ... */ }
 void RecordDialog::loadRecordData() {
     QString pk = m_dbManager->getPrimaryKeyColumn(m_tableName);
-    QJsonArray arr = m_dbManager->fetchTableDataHttp(m_tableName, QString("%1 = %2").arg(pk).arg(m_recordId));
-    if (arr.isEmpty()) return;
+
+    // 1. Пытаемся получить данные по точному ID
+    // Используем фильтр, который гарантированно понимает сервер (pk = 'id')
+    QJsonArray arr = m_dbManager->fetchTableDataHttp(m_tableName, QString("%1 = '%2'").arg(pk, m_recordId));
+
+    // 2. Если не нашли, пробуем по универсальному "id" (иногда в NoSQL ключи плавают)
+    if (arr.isEmpty() && pk.toLower() != "id") {
+        arr = m_dbManager->fetchTableDataHttp(m_tableName, QString("id = '%1'").arg(m_recordId));
+    }
+
+    // 3. Крайний случай: если совсем пусто, пробуем запросить всё и найти вручную в массиве
+    if (arr.isEmpty()) {
+        QJsonArray all = m_dbManager->fetchTableDataHttp(m_tableName, "");
+        for(int i=0; i<all.size(); ++i) {
+            QJsonObject o = all[i].toObject();
+            if (o[pk].toVariant().toString() == m_recordId || o["id"].toVariant().toString() == m_recordId) {
+                arr.append(o);
+                break;
+            }
+        }
+    }
+
+    if (arr.isEmpty()) {
+        qWarning() << "[RecordDialog] Record not found:" << m_tableName << "ID:" << m_recordId;
+        QMessageBox::warning(this, "Предупреждение",
+            "Не удалось загрузить данные записи. Поля будут пустыми.\nВозможно, запись была удалена или сервер недоступен.");
+        return;
+    }
+
     QJsonObject data = arr[0].toObject();
+
+    // Создаем карту существующих ключей в нижнем регистре для сопоставления с колонками
+    QMap<QString, QString> dataKeysMap;
+    for (const QString &key : data.keys()) {
+        dataKeysMap[key.toLower()] = key;
+    }
+
     foreach (const QString &col, m_columns) {
         if (!m_fieldWidgets.contains(col)) continue;
-        QString val = data[col].toVariant().toString();
+
+        // Ищем значение в данных (Case-Insensitive match)
+        QString actualKey = dataKeysMap.value(col.toLower());
+        QString val;
+        if (!actualKey.isEmpty()) {
+            val = data[actualKey].toVariant().toString();
+        }
+
         if (QComboBox *combo = qobject_cast<QComboBox*>(m_fieldWidgets[col])) {
             int idx = combo->findData(val);
             if (idx >= 0) combo->setCurrentIndex(idx);
+            else if (!val.isEmpty()) {
+                // Если значения нет в списке, добавляем его временно
+                combo->addItem(val + " (Текущее)", val);
+                combo->setCurrentIndex(combo->count() - 1);
+            }
         } else if (QLineEdit *edit = qobject_cast<QLineEdit*>(m_fieldWidgets[col])) {
             edit->setText(val);
         }

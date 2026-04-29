@@ -25,7 +25,7 @@ QueriesWindow::QueriesWindow(DatabaseManager *dbManager, QWidget *parent)
     ConfigManager config("config.ini");
     m_isClassicUI = config.isClassicUI();
 
-    setWindowTitle(m_isClassicUI ? "[CUA] Запросы" : "Специальные запросы");
+    setWindowTitle(m_isClassicUI ? "[CUA] Databases" : "Специальные запросы");
     if (m_isClassicUI) resize(850, 600); else resize(1000, 750);
 
     setupUI();
@@ -179,16 +179,28 @@ void QueriesWindow::runSelectedQuery()
     bool ok = false;
 
     if (m_dbManager->isHttpMode()) {
-        QJsonArray data = m_dbManager->executeCustomQueryHttp(target.sqlText, &ok);
-        if (ok) {
+        // ЛАБ 4: Для NoSQL используем специальный эндпоинт, чтобы сервер мог эмулировать SQL
+        QString url = m_dbManager->serverUrl() + "/api/special/" + target.type + "/" + target.number;
+        QByteArray resp = m_dbManager->sendHttpRequest("GET", url);
+
+        if (!resp.isEmpty()) {
+            QJsonObject root = QJsonDocument::fromJson(resp).object();
+            QJsonArray data = root["data"].toArray();
             if (!data.isEmpty()) {
                 cols = data[0].toObject().keys();
+                // Сортируем колонки, чтобы ID был первым (для красоты)
+                QString pk = "id";
+                if (cols.contains(pk)) { cols.removeAll(pk); cols.prepend(pk); }
+
                 for (int i = 0; i < data.size(); ++i) {
                     QList<QVariant> row;
                     QJsonObject obj = data[i].toObject();
                     foreach (const QString &col, cols) row << obj[col].toVariant();
                     rows << row;
                 }
+                ok = true;
+            } else {
+                ok = true; // Пустой результат - тоже результат
             }
         }
     } else {

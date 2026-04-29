@@ -4,7 +4,8 @@ import os
 import re
 from typing import List, Dict, Any, Optional
 
-NOSQL_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "nosql_db_python"))
+# Важно: используем ту же папку, что и C++ сервер для совместимости
+NOSQL_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "nosql_db_cpp"))
 
 class NoSQLManager:
     def __init__(self):
@@ -17,33 +18,64 @@ class NoSQLManager:
     def _get_connection(self, table_name: str):
         db_path = self._get_db_path(table_name)
         conn = sqlite3.connect(db_path)
-        # Создаем структуру "Ключ-Значение" (как в Berkeley DB SQL)
+        conn.row_factory = sqlite3.Row
         conn.execute("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)")
         return conn
 
     def list_tables(self) -> List[str]:
         if not os.path.exists(NOSQL_DIR): return []
-        # Теперь просто ищем файлы .db
-        return [f.replace('.db', '') for f in os.listdir(NOSQL_DIR) if f.endswith('.db')]
+        return sorted([f.replace('.db', '') for f in os.listdir(NOSQL_DIR) if f.endswith('.db')])
 
     def get_all_data(self, table_name: str) -> List[Dict[str, Any]]:
+        return self.execute_filter(table_name, None)
+
+    def execute_filter(self, table_name: str, filter_str: Optional[str] = None) -> List[Dict[str, Any]]:
         if not os.path.exists(self._get_db_path(table_name)): return []
+        
+        sql = "SELECT key, value FROM kv"
+        params = []
+        
+        if filter_str:
+            # Парсинг фильтра: col op val
+            match = re.search(r"(\w+)\s*(=|>|<|>=|<=|ILIKE)\s*(.+)", filter_str, re.IGNORECASE)
+            if match:
+                col, op, val = match.groups()
+                val = val.strip("'\"% ")
+                
+                # Если фильтр по виртуальному ID (__pk)
+                target_col = "key" if col == "__pk" else f"json_extract(value, '$.{col}')"
+                
+                if op.upper() == "ILIKE":
+                    sql += f" WHERE {target_col} LIKE ?"
+                    params.append(f"%{val}%")
+                else:
+                    # Умное сравнение для ключей (длина, значение) или CAST для чисел
+                    if col == "__pk":
+                        sql += f" WHERE (length(key), key) {op} (length(?), ?)"
+                        params.extend([val, val])
+                    else:
+                        # Проверка на число
+                        if val.replace('.','',1).isdigit():
+                            sql += f" WHERE CAST({target_col} AS REAL) {op} ?"
+                            params.append(float(val))
+                        else:
+                            sql += f" WHERE {target_col} {op} ?"
+                            params.append(val)
+
+        # Сортировка как в C++
+        sql += " ORDER BY length(key) ASC, key ASC"
         
         results = []
         try:
             with self._get_connection(table_name) as conn:
-                try:
-                    cursor = conn.execute(f"SELECT key, value FROM kv")
-                except:
-                    cursor = conn.execute(f"SELECT key, value FROM {table_name}")
-                
-                for key, value in cursor:
-                    row = json.loads(value)
-                    # Сохраняем ключ отдельно для фильтрации
-                    row['__pk'] = key
-                    results.append(row)
+                cursor = conn.execute(sql, params)
+                for row in cursor:
+                    record = json.loads(row['value'])
+                    record['__pk'] = row['key']
+                    results.append(record)
         except Exception as e:
-            print(f"Error reading {table_name}: {e}")
+            print(f"NoSQL Error ({table_name}): {e}")
+            
         return results
 
     def insert_record(self, table_name: str, pk_val: str, data: Dict[str, Any]):
@@ -52,57 +84,8 @@ class NoSQLManager:
             conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (str(pk_val), json_val))
 
     def update_record(self, table_name: str, pk_val: str, data: Dict[str, Any]):
-        self.insert_record(table_name, pk_val, data) # В KV это одно и то же
+        self.insert_record(table_name, pk_val, data)
 
     def delete_record(self, table_name: str, pk_val: str):
         with self._get_connection(table_name) as conn:
             conn.execute("DELETE FROM kv WHERE key = ?", (str(pk_val),))
-
-    def execute_filter(self, table_name: str, filter_str: Optional[str] = None) -> List[Dict[str, Any]]:
-        data = self.get_all_data(table_name)
-        if not filter_str: return data
-        
-        try:
-            # 1. Попытка распарсить ILIKE (поиск подстроки)
-            # Поддерживает: "col::text ILIKE '%val%'" и "col ILIKE val"
-            ilike_pattern = r"(\w+)(?:::text)?\s+ILIKE\s+['%]*([^'%]+)['%]*"
-            ilike_match = re.search(ilike_pattern, filter_str, re.IGNORECASE)
-            if ilike_match:
-                col, val = ilike_match.groups()
-                val = val.lower()
-                return [row for row in data if val in str(row.get(col, "")).lower() or (col == "__pk" and val in str(row["__pk"]).lower())]
-
-            # 2. Попытка распарсить операторы сравнения (=, >, <, !=)
-            # Поддерживает: "col = val", "col > 5" и т.д.
-            match = re.search(r"(\w+)\s*([=><!]{1,2})\s*(.+)", filter_str)
-            if match:
-                col, op, val = match.groups()
-                val = val.strip("'\" ")
-                
-                results = []
-                for row in data:
-                    actual_val = row.get(col)
-                    if actual_val is None and col == "__pk":
-                        actual_val = row.get("__pk")
-                    
-                    if actual_val is None: continue
-
-                    try:
-                        # Пытаемся сравнивать как числа
-                        target_v, actual_v = float(val), float(actual_val)
-                    except:
-                        # Иначе как строки
-                        target_v, actual_v = str(val).lower(), str(actual_val).lower()
-
-                    if (op == "=" or op == "==") and actual_v == target_v: results.append(row)
-                    elif (op == "!=" or op == "<>") and actual_v != target_v: results.append(row)
-                    elif op == ">" and actual_v > target_v: results.append(row)
-                    elif op == "<" and actual_v < target_v: results.append(row)
-                    elif op == ">=" and actual_v >= target_v: results.append(row)
-                    elif op == "<=" and actual_v <= target_v: results.append(row)
-                return results
-            
-            return data # Если не распарсили, возвращаем всё
-        except Exception as e:
-            print(f"Filter error: {e}")
-            return data

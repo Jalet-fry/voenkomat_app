@@ -17,7 +17,7 @@ class RecordDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent = nullptr, int recordId = -1);
+    explicit RecordDialog(DatabaseManager *dbManager, const QString &tableName, QWidget *parent = nullptr, const QString &recordId = "");
     ~RecordDialog();
 
 protected:
@@ -36,7 +36,7 @@ private:
 
     DatabaseManager *m_dbManager;
     QString m_tableName;
-    int m_recordId;
+    QString m_recordId;
     bool m_isClassicUI;
 
     QStringList m_columns;

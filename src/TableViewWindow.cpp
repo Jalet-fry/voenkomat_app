@@ -197,7 +197,7 @@ void TableViewWindow::addRecord() { if(!m_canEdit) return; RecordDialog d(m_dbMa
 void TableViewWindow::editRecord() {
     if(!m_canEdit) return;
     int r = m_table->currentRow(); if(r<0) return;
-    int id = m_table->item(r, 0)->text().toInt();
+    QString id = m_table->item(r, 0)->text();
     RecordDialog d(m_dbManager, m_tableName, this, id); if(d.exec()==QDialog::Accepted) loadData();
 }
 
@@ -205,13 +205,13 @@ void TableViewWindow::deleteRecord() {
     if(!m_canEdit) return;
     int r = m_table->currentRow(); if(r<0) return;
     if (QMessageBox::question(this, "Удаление", "Удалить выбранную запись?") != QMessageBox::Yes) return;
-    int id = m_table->item(r, 0)->text().toInt();
+    QString id = m_table->item(r, 0)->text();
     bool ok = false;
     if (m_dbManager->isHttpMode()) {
         ok = m_dbManager->deleteRecordHttp(m_tableName, id);
     } else {
         QString pk = m_dbManager->getPrimaryKeyColumn(m_tableName);
-        m_dbManager->executeQuery(QString("DELETE FROM public.%1 WHERE %2 = %3").arg(m_tableName).arg(pk).arg(id), &ok);
+        m_dbManager->executeQuery(QString("DELETE FROM public.%1 WHERE %2 = '%3'").arg(m_tableName).arg(pk).arg(id), &ok);
     }
     if (ok) loadData(); else QMessageBox::critical(this, "Ошибка", m_dbManager->lastError());
 }

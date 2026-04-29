@@ -20,16 +20,19 @@ DatabaseManager& DatabaseManager::instance() {
     return inst;
 }
 
-bool DatabaseManager::connectToDatabase() {
+QString DatabaseManager::projectRoot() const {
     QString appDir = QCoreApplication::applicationDirPath();
-    // Ищем корень проекта (поднимаемся на 4 уровня из build/Desktop.../release)
-    QString projectRoot = QDir(appDir).absoluteFilePath("../../../..");
-    QString configPath = QDir::cleanPath(projectRoot + "/config.ini");
-
-    if (!QFile::exists(configPath)) {
-        // Запасной вариант: ищем в текущей папке
-        configPath = QDir::cleanPath(appDir + "/config.ini");
+    QDir dir(appDir);
+    // Поднимаемся вверх пока не найдем config.ini или корень
+    for (int i = 0; i < 6; ++i) {
+        if (dir.exists("config.ini")) return dir.absolutePath();
+        if (!dir.cdUp()) break;
     }
+    return appDir;
+}
+
+bool DatabaseManager::connectToDatabase() {
+    QString configPath = QDir::cleanPath(projectRoot() + "/config.ini");
 
     if (!QFile::exists(configPath)) {
         qCritical() << "CRITICAL: config.ini not found at" << configPath;

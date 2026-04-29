@@ -91,15 +91,17 @@ QJsonObject DatabaseManager::addRecordHttp(const QString &tableName, const QJson
     return obj["data"].toObject();
 }
 
-bool DatabaseManager::updateRecordHttp(const QString &tableName, int recordId, const QJsonObject &data)
+bool DatabaseManager::updateRecordHttp(const QString &tableName, const QString &recordId, const QJsonObject &data)
 {
-    QByteArray response = sendHttpRequest("PUT", m_serverUrl + "/api/" + tableName + "/" + QString::number(recordId), QJsonDocument(data).toJson());
-    return !response.isEmpty();
+    QByteArray response = sendHttpRequest("PUT", m_serverUrl + "/api/" + tableName + "/" + recordId, QJsonDocument(data).toJson());
+    if (response.isEmpty()) return false;
+    QJsonObject resObj = QJsonDocument::fromJson(response).object();
+    return resObj["status"].toString() == "success";
 }
 
-bool DatabaseManager::deleteRecordHttp(const QString &tableName, int recordId)
+bool DatabaseManager::deleteRecordHttp(const QString &tableName, const QString &recordId)
 {
-    QByteArray response = sendHttpRequest("DELETE", m_serverUrl + "/api/" + tableName + "/" + QString::number(recordId));
+    QByteArray response = sendHttpRequest("DELETE", m_serverUrl + "/api/" + tableName + "/" + recordId);
     return !response.isEmpty();
 }
 
