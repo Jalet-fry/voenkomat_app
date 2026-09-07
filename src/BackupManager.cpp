@@ -1,7 +1,3 @@
-// TODO: [REVIEW] OK.
-// TODO: [FIX] exportAllTablesToXlsx and other methods are currently stubs (return false/empty). - FIXED
-// TODO: [FIX] generateSQLBackup uses "DELETE FROM" - verify if this is the intended restore behavior (destructive).
-
 #include "BackupManager.h"
 #include <QSqlQuery>
 #include <QSqlError>

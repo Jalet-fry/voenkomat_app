@@ -16,4 +16,4 @@ private:
     QStringList getPrimaryKeyColumns(const QString &tableName, QSqlDatabase &db);
 };
 
-#endif // CONVERTER_H
+#endif

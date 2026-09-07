@@ -1,4 +1,3 @@
-// TODO: [REVIEW] OK.
 #ifndef BACKUPMANAGER_H
 #define BACKUPMANAGER_H
 

@@ -3,10 +3,6 @@
 
 #include <QString>
 
-/**
- * @brief TODO: [LAB1] Имена таблиц и полей приведены в полное соответствие с реляционной схемой (create_schema.sql).
- * Это критически важно для корректной работы SQL запросов и соответствия ТЗ.
- */
 namespace Db {
     namespace Tables {
         const QString CALLUP_EVENTS = "callup_events";

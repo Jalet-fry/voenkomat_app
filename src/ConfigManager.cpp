@@ -1,4 +1,3 @@
-// TODO: [REVIEW] OK.
 #include "ConfigManager.h"
 #include <QFile>
 #include <QDir>

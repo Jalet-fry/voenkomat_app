@@ -11,4 +11,4 @@ public:
     void run();
 };
 
-#endif // DATAGENERATOR_H
+#endif

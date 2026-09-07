@@ -41,4 +41,4 @@ private:
     QSqlDatabase db();
 };
 
-#endif // DATABASEMANAGER_H
+#endif

@@ -1,4 +1,3 @@
-// TODO: [REVIEW] OK.
 #ifndef CONFIGMANAGER_H
 #define CONFIGMANAGER_H
 
